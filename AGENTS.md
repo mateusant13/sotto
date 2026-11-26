@@ -652,15 +652,18 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-25):** `_main\_audit-verify-all.cmd` = **427691 B**,
-  **4877 CRLF** / 0 bare LF, sha256 `8DB784E6EAF851A5852B5E927445C170C9D915B127125AA07FE92260263A7F95`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **429952 B**,
+  **4901 CRLF** / 0 bare LF, sha256 `F9AC48533CF232E1F00DB960E0B1A418F002AFFD310E12A63D9176C8D889DD56`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
   `panel-language` entraram depois, tambem em par com o seu `red-as-expected`, e os dois passos
   do `history-gallery` saíram com o modulo que eles julgavam. 2026-11-25 (mais tarde): entraram
   `panel-chrome` + `panel-chrome-neg` e `base-themes` + `base-themes-neg` -- os dois instrumentos
-  existiam e nenhum estava ligado a esta bateria.)
+  existiam e nenhum estava ligado a esta bateria. 2026-11-26: entraram dois pares novos do
+  congelamento da legenda do YouTube -- `yt-pause-disagreement` (uma pausa que a MEDIDA desmentiu
+  nao apaga o ecra) e `yt-diag-truth` (o rotulo `why='painted'` nao sobrevive a' foto que o
+  produziu).)
 
 ## `git rm --cached` SO' CONTA QUANDO `git ls-tree HEAD` CONCORDA (medido 2026-11-26)
 

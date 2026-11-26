@@ -364,6 +364,17 @@ def arm_shell_wiring(mono, shell_path=SHELL):
     ns = {"log": lambda m: logs.append(str(m)), "time": _Clock(), "os": os,
           "_yt_mark": lambda *_a, **_k: None,
           "_YT_RATE_LOG_S": 5.0}
+    # O MODULO REAL DA PAUSA (2026-11-26): `_yt_cdp_snapshot` deriva
+    # `_paused_proven` de `youtube_clock.pause_proven`, o dono unico da regra
+    # "uma pausa que a medida desmentiu nao e' pausa". O metodo extraido corre
+    # aqui com o modulo VIVO, nunca com uma copia -- uma paridade de copia
+    # mediria a copia.
+    try:
+        import youtube_clock as _yt_clock_live
+    except Exception as _exc:                          # noqa: BLE001
+        raise SystemExit('youtube_clock nao importavel de %s: %r'
+                         % (WEBVIEW, _exc))
+    ns["youtube_clock"] = _yt_clock_live
     for const in ("CLOCK_STATIC_PAUSE_S", "CLOCK_STATIC_PAUSE_FLAG_S",
                   "CLOCK_MOVING_MIN_RATE",
                   "PAUSE_BLANK_DWELL_S"):

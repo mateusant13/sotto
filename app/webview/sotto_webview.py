@@ -70,6 +70,9 @@ import panel_state
 #: A MARCA que o motor nao deu, tirada da PROSA e da PAUSA medida (2026-11-10).
 #: Puro e importavel, para o oraculo julgar o fecho sem subir a shell.
 import prose_punct
+#: O DONO UNICO DA REGRA "uma pausa desmentida nao e' pausa" (2026-11-26). Puro:
+#: o oraculo conduz `pause_proven` sem subir a shell nem tocar no dispositivo.
+import youtube_clock
 #: A CORRIDA que o decodificador inventou (`come come come ...`), cortada no
 #: texto ja' emitido (2026-11-11). Puro, e com a mesma regra estreita que o
 #: oraculo executa; ver `app/webview/text_normalize.py`.
@@ -4434,7 +4437,7 @@ class ExternalCaptionWatcher(threading.Thread):
         self.finalized = False
         self.last_change = 0.0
 
-    def _yt_cdp_row_count(self, max_age=8.0):
+    def _yt_cdp_row_count(self, max_age=1.2):
         """LINHAS na foto mais recente da CDP -- a verdade sobre o ecra.
 
         `yt_cdp_rows` NAO serve para isto (2026-11-05): e' um envio de UMA so'
@@ -4484,8 +4487,19 @@ class ExternalCaptionWatcher(threading.Thread):
                 _a = None
             if _a is not None:
                 age = '%.0f' % (_a * 1000.0)
-        rows = self._yt_cdp_row_count()
+        rows = self._yt_cdp_row_count(float(getattr(self, 'DOM_FRESH_S', 1.2)))
         why = str(d.get('why') or 'no-frame')
+        # UM ROTULO NAO SOBREVIVE A' FOTO QUE O PRODUZIU (2026-11-26).
+        # MEDIDO no log do dono (pid 57008, 02:38:0x): `YOUTUBE_TICK_MS ...
+        # cdp_age_ms=8265 rows=2 why='painted'` -- o rotulo vinha do ultimo
+        # ramo que correu (sticky) e as linhas de uma foto de 8 s, enquanto os
+        # caminhos que PINTAM recusam qualquer foto acima de 1,2-1,5 s. A linha
+        # do log dizia "a pintar" com o ecra congelado, e mandou a investigacao
+        # para o sitio errado exactamente como a `rows=0 why='painted'` de
+        # 2026-11-05. `painted-stale` e' o que a linha passa a dizer quando o
+        # rotulo e a contagem fresca nao podem ser do mesmo instante.
+        if why == 'painted' and rows == 0:
+            why = 'painted-stale'
         return src, vid, age, rows, why
 
     def run(self):
@@ -6060,7 +6074,19 @@ class ExternalCaptionWatcher(threading.Thread):
                 # DOM dizia `paused=False` enquanto o `currentTime` nao avancava.
                 # Uma bandeira sozinha mente; o relogio que nao anda e' a medida.
                 _ct_static, _ct_held = self._yt_clock_static(snap)
-                if _ct_static:
+                # UMA PAUSA QUE A MEDIDA DESMENTIU NAO E' PAUSA (2026-11-26).
+                # As duas testemunhas medem janelas diferentes: `_yt_clock_moving`
+                # olha desde a foto anterior (segundos), `_yt_clock_static` desde
+                # a ultima posicao DIFERENTE (pode ser 0,25 s). Medido no log do
+                # dono (pid 57008): `YOUTUBE_PAUSE_DISAGREED clock_rate=0.58` as
+                # 02:38:01.508 e `YOUTUBE_PAUSE_PROVEN held_s=0.25` as .756, e
+                # entao `CAPTION_WINDOW_BLANKED` -- o ecra apagou com o relogio
+                # a andar. O predicado vive em `youtube_clock.pause_proven`, um
+                # dono so', para o oraculo poder conduzi-lo: dois veredictos
+                # opostos no mesmo tick sao um defeito, e o que decide e' o que
+                # MEDIU movimento.
+                _paused_proven = youtube_clock.pause_proven(_ct_static, _mv_moving)
+                if _paused_proven:
                     # A PAUSA PROVADA: a posicao esta' parada ha'
                     # `CLOCK_STATIC_PAUSE_S` entre leituras DISTINTAS. E' a unica
                     # testemunha que apaga o ecra -- com a bandeira a concordar ou
@@ -6123,7 +6149,7 @@ class ExternalCaptionWatcher(threading.Thread):
                 # ecra. E a VOLTA nao espera pela bandeira: no primeiro tick em que
                 # a posicao mexe `_ct_static` e' False, a borda de volta chega aqui
                 # e repinta a linha mesmo que o `paused` da CDP continue em `True`.
-                _now_paused = bool(_ct_static)
+                _now_paused = bool(_paused_proven)
                 # O ESPELHO NA SHELL VAI ANTES DA BORDA (2026-11-16), e a ordem
                 # e' a cura de uma metade muda: quem arma o apagar por
                 # inatividade e' a shell (`SottoShell._caption_idle_hide`), e o
@@ -6146,8 +6172,9 @@ class ExternalCaptionWatcher(threading.Thread):
                            str(getattr(self, 'yt_video_id', '') or '')))
                 self._yt_pause_edge(
                     _now_paused,
-                    witness=('flag+clock-static' if _flag_paused and _ct_static
-                             else ('clock-static' if _ct_static else None)))
+                    witness=('flag+clock-static'
+                             if _flag_paused and _paused_proven
+                             else ('clock-static' if _paused_proven else None)))
         if snap is None or not snap.get('items'):
             return None
         if declared and seen and declared != seen:

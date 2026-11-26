@@ -182,3 +182,26 @@ def rebase(floor, t, invented, eps=0.05):
     except (TypeError, ValueError):
         ours = 0.0
     return now if (base - now) <= ours + eps else base
+
+
+def pause_proven(clock_static, clock_moving):
+    """A PAUSA SO' E' VERDADEIRA QUANDO O RELOGIO NAO A DESMENTIU (2026-11-26).
+
+    O DEFEITO, medido no log do dono (2026-11-26 02:38:01, pid 57008): no MESMO
+    tick o `YOUTUBE_PAUSE_DISAGREED paused_flag=True clock_rate=0.58` dizia que
+    o relogio andava e o `YOUTUBE_PAUSE_PROVEN witness=flag+clock-static
+    held_s=0.25` dizia que ele estava parado -- as duas testemunhas medem
+    janelas diferentes (a primeira desde a foto anterior, ~8 s; a segunda
+    desde a ultima posicao DIFERENTE, 0,25 s). O apagar consultava so' a
+    segunda, entao um buffer de 0,25 s numa maquina que engasga apagava a
+    legenda de um video que estava a andar, e o espelho `yt_source_paused`
+    ficava ligado, recusando CADA linha seguinte do player -- a legenda congelou
+    e nao voltou ao despausar.
+
+    A ordem e' a mesma lei do `_yt_clock_moving`, que ja' existia: a medida
+    desmente a bandeira, nunca o contrario. Aqui ela tambem desmente a pausa
+    curta. `clock_moving` ganha sempre que as duas discordam no mesmo tick.
+
+    Devolve `bool`: a pausa vale (True) ou foi desmentida / nao medida (False).
+    """
+    return bool(clock_static) and not bool(clock_moving)

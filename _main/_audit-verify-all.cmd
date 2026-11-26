@@ -1530,6 +1530,30 @@ if exist _main\capture-share-oracle.py (
 call :step red-as-expected-capture-share 1 "_main\capture-share-oracle.py;worker\capture_share.py;worker\sotto_worker.py;worker\mic_tap.py" "%OUT%\capture-share-neg.log" python _main\capture-share-oracle.py --neg-arm
 call :expectred red-as-expected-capture-share !STEP_RC! "%OUT%\capture-share-neg.log" "NEG ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-capture-share MISSING "%OUT%\capture-share-neg.log" "NEG ARM VERDICT: PASS" )
+REM --- O CONGELAMENTO DA LEGENDA DO YOUTUBE (2026-11-26) -------------------
+REM Nasceram do defeito que o dono reportou verbatim: "subtitles from youtube
+REM worked for like 2 seconds and then froze, when i unpaused it still did not
+REM worked". `yt-pause-disagreement` (uma pausa que a MEDIDA desmentiu nao apaga
+REM o ecra nem arma o espelho `yt_source_paused`, que recusa cada linha seguinte);
+REM `yt-diag-truth` (o rotulo `why='painted'` nao sobrevive a' foto que o
+REM produziu). Os dois correm sobre fakes: nenhum abre dispositivo, browser ou
+REM janela, e o `--neg-arm` de cada um muta uma COPIA do ficheiro vivo.
+if exist _main\yt-pause-disagreement-oracle.py (
+ call :step yt-pause-disagreement 0 "_main\yt-pause-disagreement-oracle.py;app\webview\youtube_clock.py;app\webview\sotto_webview.py" "%OUT%\yt-pause-disagreement.log" python _main\yt-pause-disagreement-oracle.py
+ call :record yt-pause-disagreement !STEP_RC!
+) else ( call :record yt-pause-disagreement MISSING )
+if exist _main\yt-pause-disagreement-oracle.py (
+call :step red-as-expected-yt-pause-disagreement 1 "_main\yt-pause-disagreement-oracle.py;app\webview\youtube_clock.py" "%OUT%\yt-pause-disagreement-neg.log" python _main\yt-pause-disagreement-oracle.py --neg-arm
+call :expectred red-as-expected-yt-pause-disagreement !STEP_RC! "%OUT%\yt-pause-disagreement-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-yt-pause-disagreement MISSING "%OUT%\yt-pause-disagreement-neg.log" "NEG-ARM VERDICT: PASS" )
+if exist _main\yt-diag-truth-oracle.py (
+ call :step yt-diag-truth 0 "_main\yt-diag-truth-oracle.py;app\webview\sotto_webview.py" "%OUT%\yt-diag-truth.log" python _main\yt-diag-truth-oracle.py
+ call :record yt-diag-truth !STEP_RC!
+) else ( call :record yt-diag-truth MISSING )
+if exist _main\yt-diag-truth-oracle.py (
+call :step red-as-expected-yt-diag-truth 1 "_main\yt-diag-truth-oracle.py;app\webview\sotto_webview.py" "%OUT%\yt-diag-truth-neg.log" python _main\yt-diag-truth-oracle.py --neg-arm
+call :expectred red-as-expected-yt-diag-truth !STEP_RC! "%OUT%\yt-diag-truth-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-yt-diag-truth MISSING "%OUT%\yt-diag-truth-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `discord-streams` (2026-11-25): o passo emanava do mesmo oraculo que atende a
 REM auditoria de desenho, e o censo `battery-wiring` recusou-o por estar sem passo.
 REM Ele julga `worker/discord_streams.py` (uma arvore de PCM por falante vira uma
