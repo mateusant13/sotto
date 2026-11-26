@@ -1629,6 +1629,34 @@ if exist _main\overlay-ink-oracle.py (
 call :step red-as-expected-overlay-ink 1 "_main\overlay-ink-oracle.py;app\webview\overlay_paint.py" "%OUT%\overlay-ink-neg.log" python _main\overlay-ink-oracle.py --neg-arm
 call :expectred red-as-expected-overlay-ink !STEP_RC! "%OUT%\overlay-ink-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-overlay-ink MISSING "%OUT%\overlay-ink-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `history-replay` (2026-11-26): 200 legendas passam pela regra REAL de fusao
+REM (`history_merge`) e viram 200 linhas distintas num ficheiro na forma do store;
+REM cada linha entregue DUAS vezes seguidas -- a forma do defeito medido (`517 de
+REM 2077`) -- nao acrescenta nenhuma; uma linha a crescer reescreve a sua; o mesmo
+REM texto noutro `start` ENTRA (fala repetida e' fala); e uma leitura mais curta nao
+REM apaga o rabo. Fecha tambem a idempotencia (A23) no transcrito.
+if exist _main\history-replay-oracle.py (
+ call :step history-replay 0 "_main\history-replay-oracle.py;app\webview\sotto_webview.py" "%OUT%\history-replay.log" python _main\history-replay-oracle.py
+ call :record history-replay !STEP_RC!
+) else ( call :record history-replay MISSING )
+if exist _main\history-replay-oracle.py (
+call :step red-as-expected-history-replay 1 "_main\history-replay-oracle.py;app\webview\sotto_webview.py" "%OUT%\history-replay-neg.log" python _main\history-replay-oracle.py --neg-arm
+call :expectred red-as-expected-history-replay !STEP_RC! "%OUT%\history-replay-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-history-replay MISSING "%OUT%\history-replay-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `altc-soak` (2026-11-26): 200 toques de Alt+C a 3 s (10 minutos) no modulo
+REM PURO real (`hotkey_gesture.next_action`). Prova que a escada de duas casas nao
+REM deriva, que toque unico nunca abre o painel da direita (ordem do dono de
+REM 2026-11-24, medida num segundo toque 15,3 s depois), que nenhum contentor do
+REM modulo cresce em 200 chamadas (um memo sem tecto), e que uma rajada de N custa
+REM os mesmos N passos. Nada disto arma um hook nem toca numa tecla.
+if exist _main\altc-soak-oracle.py (
+ call :step altc-soak 0 "_main\altc-soak-oracle.py;app\webview\hotkey_gesture.py" "%OUT%\altc-soak.log" python _main\altc-soak-oracle.py
+ call :record altc-soak !STEP_RC!
+) else ( call :record altc-soak MISSING )
+if exist _main\altc-soak-oracle.py (
+call :step red-as-expected-altc-soak 1 "_main\altc-soak-oracle.py;app\webview\hotkey_gesture.py" "%OUT%\altc-soak-neg.log" python _main\altc-soak-oracle.py --neg-arm
+call :expectred red-as-expected-altc-soak !STEP_RC! "%OUT%\altc-soak-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-altc-soak MISSING "%OUT%\altc-soak-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `yt-producer-soak` (2026-11-26): 5 MINUTOS SIMULADOS de leitura com um
 REM produtor que publica no proprio relogio (1 s, 3 s e os 8,8 s medidos na
 REM sessao do dono). Julga que CADA publicacao sai uma vez, dentro da janela de

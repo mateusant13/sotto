@@ -683,8 +683,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **437655 B**,
-  **4989 CRLF** / 0 bare LF, sha256 `C8C08FBFB07E907DE13F8CA675FF499DBF1A4567CFDEF7C07D60FB9F71EDBDFC`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **440045 B**,
+  **5017 CRLF** / 0 bare LF, sha256 `52A1A90103589CFD20E929874BA00702133C8E7AB4E750C7C047886A725F4609`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -709,7 +709,14 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   E `overlay-ink` + `red-as-expected-overlay-ink`: a metade dos PIXEIS, lida do bitmap GDI+
   FORA DO ECRA (tema sem placa, logo cada pixel com alfa e' glifo): tinta para a linha dele,
   largura de tinta a seguir o texto, rasters diferentes por texto, zero tinta para legenda
-  vazia, e A->B->A de volta ao raster de A -- o cache de pintura nao serve outra linha.)
+  vazia, e A->B->A de volta ao raster de A -- o cache de pintura nao serve outra linha.
+  E `history-replay` + `red-as-expected-history-replay`: 200 legendas pela regra real de
+  fusao dao 200 linhas distintas num ficheiro na forma do store, cada linha entregue duas
+  vezes nao duplica nada (a forma do defeito "517 de 2077"), crescer reescreve, repetir
+  noutro `start` entra e encolher nao apaga o rabo -- o que fecha tambem a idempotencia no
+  transcrito. E `altc-soak` + `red-as-expected-altc-soak`: 200 toques de Alt+C a 3 s no
+  modulo puro, provando que toque unico nunca abre o painel da direita e que nenhum
+  contentor do modulo cresce em 200 chamadas.)
 
 ## `git rm --cached` SO' CONTA QUANDO `git ls-tree HEAD` CONCORDA (medido 2026-11-26)
 
