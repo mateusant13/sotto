@@ -734,8 +734,12 @@ if second != \"\":
             first_state = "frontend-preparing" if early_open else "frontend-ready"
             if not wait_state(bridge, child, first_state):
                 case_failures.append("fake child did not reach " + first_state)
-            if status_events:
-                case_failures.append("hidden preload emitted status before panel activation")
+            # NO emptiness arm here. The final sequence check (below, after the
+            # capture-started barrier) is STRICTLY STRONGER: every status line the
+            # child wrote before activation has been consumed by the single pump
+            # thread by then, so a hidden-window leak is an extra event there.
+            # An emptiness test at this instant races the pump: it publishes
+            # bridge.state at sotto_webview.py:25962 BEFORE it decides at :26163.
             if early_open:
                 pending_state = dict(
                     wanted=True, player_owns=False, painted_recent=False,
@@ -748,8 +752,14 @@ if second != \"\":
                 case_failures.append("real bridge rejected panel activation")
             if bridge.request_capture() is not True:
                 case_failures.append("real bridge rejected idempotent duplicate activation")
-            if status_events:
-                case_failures.append("activation leaked stale hidden status before child response")
+            # The old `if status_events:` arm lived here and flipped with the
+            # pump thread; it is replaced by the content check after the last
+            # child line below, which judges NAMES rather than emptiness.
+            # (c) PURE PROJECTION. `caption_status_for` reads only the dictionary
+            # built here, so no pump thread can change its answer:
+            # sotto_webview.py:3321-3323 returns 'frontend-preparing' only for
+            # model-loaded/frontend-preparing, never for frontend-ready. A stale
+            # ready overlay therefore turns this arm red deterministically.
             if not early_open:
                 ready_state = dict(
                     wanted=True, player_owns=False, painted_recent=False,
@@ -761,7 +771,27 @@ if second != \"\":
             if not wait_state(bridge, child, "capture-started"):
                 case_failures.append("child did not receive START_CAPTURE on the real pipe")
             expected_status_count = 2 if early_open else 1
+            # BOUNDED DRAIN. `_pump` sets bridge.state at :25962 before it calls
+            # `_status` at :26168, so a state barrier alone can precede the final
+            # event. Drain at most 2.0 s, then judge whatever is present; the
+            # ceiling is fixed and the count check below cannot silently green.
+            drain_deadline = time.monotonic() + 2.0
+            while (len(status_events) < expected_status_count
+                   and time.monotonic() < drain_deadline):
+                time.sleep(0.01)
+            # (b) CONTENT, NOT EMPTINESS. Child statuses published while the
+            # panel is hidden are dropped at sotto_webview.py:26163-26166, not
+            # buffered for replay: WorkerBridge never calls on_status for them.
+            # They can only appear here if that suppression broke, so judge the
+            # NAMES after the child's last line was consumed.
+            hidden_names = ("model-loading", "model-loaded", "frontend-preparing")
+            if not early_open:
+                hidden_names += ("frontend-ready",)
             status_names = [str(event[0]) for event in status_events]
+            leaked = [name for name in status_names if name in hidden_names]
+            if leaked:
+                case_failures.append(
+                    "activation leaked stale hidden status %r" % leaked)
             if (len(status_events) != expected_status_count
                     or status_names.count("capture-started") != 1
                     or (early_open and status_names.count("frontend-ready") != 1)):
