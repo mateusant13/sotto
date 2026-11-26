@@ -132,9 +132,32 @@ def _watch_stdin(stop):
     stop.set()
 
 
+def _watch_parent(stop, pid):
+    """The belt to stdin's braces: a vanished parent ends us too.
+
+    MEASURED 2026-11-26: a zero-byte heartbeat file appeared with no child
+    behind it. A file that exists and says nothing is worse than no file, so the
+    child now writes its first line before it starts watching anything, and the
+    ownership check does not depend on one channel.
+    """
+    try:
+        import psutil
+    except Exception:                     # noqa: BLE001
+        return
+    while not stop.is_set():
+        try:
+            if not psutil.pid_exists(pid):
+                break
+        except Exception:                 # noqa: BLE001
+            break
+        stop.wait(5.0)
+    stop.set()
+
+
 def main(argv):
     path = None
     tick = TICK_S
+    pid = 0
     args = list(argv)
     while args:
         a = args.pop(0)
@@ -142,12 +165,16 @@ def main(argv):
             path = args.pop(0)
         elif a == '--tick' and args:
             tick = float(args.pop(0))
+        elif a == '--parent-pid' and args:
+            try:
+                pid = int(args.pop(0))
+            except ValueError:
+                pid = 0
     if not path:
         sys.stderr.write('usage: stall_heartbeat.py --path <file> [--tick s]\n')
         return 2
     stop = threading.Event()
-    threading.Thread(target=_watch_stdin, args=(stop,), daemon=True,
-                     name='heartbeat-stdin').start()
+    parent = int(pid) if pid else os.getppid()
     d = os.path.dirname(path)
     if d:
         try:
@@ -156,11 +183,22 @@ def main(argv):
             pass
     n = 0
     with open(path, 'a', encoding='utf-8', newline='\n') as fh:
+        # O PRIMEIRO TIQUE ANTES DE QUALQUER VIGIA: um ficheiro de relogio que
+        # existe e nao diz nada e' pior do que nenhum (medido 2026-11-26).
+        n += 1
+        fh.write(record(n, time.time(), time.perf_counter()) + '\n')
+        fh.flush()
+        threading.Thread(target=_watch_stdin, args=(stop,), daemon=True,
+                         name='heartbeat-stdin').start()
+        threading.Thread(target=_watch_parent, args=(stop, parent), daemon=True,
+                         name='heartbeat-parent').start()
         while not stop.is_set():
+            stop.wait(max(0.05, tick))
+            if stop.is_set():
+                break
             n += 1
             fh.write(record(n, time.time(), time.perf_counter()) + '\n')
             fh.flush()
-            stop.wait(max(0.05, tick))
     return 0
 
 

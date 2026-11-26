@@ -137,6 +137,28 @@ def arms(mod=None, mod_path=MODULE):
         holes3, span3 = mod.tail_gaps(empty)
         out.append(_arm('h8-empty-file-is-not-clean',
                         holes3 == [] and span3 is None, 'span=None'))
+        # H10 — THE FIRST TICK EXISTS ALMOST IMMEDIATELY. MEASURED 2026-11-26:
+        # a zero-byte heartbeat file appeared with no child behind it, and a
+        # clock file that exists and says nothing is worse than no file.
+        fast = os.path.join(tmp, 'fast.log')
+        c2 = _spawn(mod_path, fast)
+        time.sleep(0.6)
+        got = 0
+        try:
+            with open(fast, encoding='utf-8') as fh:
+                got = len([x for x in fh if x.strip()])
+        except OSError:
+            got = -1
+        try:
+            c2.stdin.close()
+        except Exception:                 # noqa: BLE001
+            pass
+        try:
+            c2.wait(timeout=6.0)
+        except subprocess.TimeoutExpired:
+            c2.kill()
+        out.append(_arm('h10-first-tick-arrives-at-once', got >= 1, 'lines=%d' % got))
+
         # H9 — THE SHELL ACTUALLY STARTS IT, FIRST, AND OWNS ITS STDIN. An
         # instrument nobody launches is not an instrument; a heartbeat started
         # after the worker would miss exactly the startup stall it exists for.
@@ -163,7 +185,8 @@ def shell_wiring(text=None):
         j = text.find('\ndef ', i)
     body = text[i:j if j > 0 else len(text)]
     pipe = 'stdin=subprocess.PIPE' in body
-    spawned = "'--path', self.STALL_HEARTBEAT_LOG" in body
+    spawned = ("'--path', self.STALL_HEARTBEAT_LOG" in body
+               and "'--parent-pid', str(os.getpid())" in body)
     logged = 'STALL_HEARTBEAT pid=%d path=%s' in body
     k = text.find('steps = (')
     order = text[k:k + 300] if k > 0 else ''
@@ -190,6 +213,7 @@ SHELL_MUTANTS = [
     ('heartbeat-does-not-own-stdin',
      "                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,",
      "                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,"),
+    ('no-parent-pid-ownership', "'--parent-pid', str(os.getpid())", "'--x', '0'"),
     ('heartbeat-not-spawned',
      "'--path', self.STALL_HEARTBEAT_LOG", "'--nope', self.STALL_HEARTBEAT_LOG"),
 ]
@@ -206,6 +230,8 @@ MUTANTS = [
     ('tick-is-a-busy-loop', 'TICK_S = 1.0', 'TICK_S = 0.0'),
     ('counter-does-not-count', 'n += 1', 'n += 0'),
     ('child-outlives-the-pipe', '    stop.set()', '    pass'),
+    ('child-never-ticks', 'while not stop.is_set():\n            stop.wait(max(0.05, tick))',
+     'while False:\n            stop.wait(max(0.05, tick))'),
 ]
 
 

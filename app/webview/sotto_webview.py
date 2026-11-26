@@ -19223,7 +19223,8 @@ class SottoShell:
             except OSError:
                 pass
             child = subprocess.Popen(
-                [sys.executable, '-u', mod, '--path', self.STALL_HEARTBEAT_LOG],
+                [sys.executable, '-u', mod, '--path', self.STALL_HEARTBEAT_LOG,
+                 '--parent-pid', str(os.getpid())],
                 stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 # 0x00004000 = BELOW_NORMAL_PRIORITY_CLASS: um relogio de

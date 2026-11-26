@@ -49,6 +49,9 @@ STAMP = re.compile(r'^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}\.\d{3}) ')
 
 DEFAULT_HB = os.path.join(ROOT, '_main', '_cache', 'stall-heartbeat.log')
 
+#: A heartbeat older than this cannot vouch for the log being analysed.
+STALE_S = 60.0
+
 
 def stamps(lines):
     """`[epoch, ...]` for every line carrying the shell's own stamp."""
@@ -111,6 +114,12 @@ def analyse(log_path, hb_path, min_gap=5.0):
     hb_holes, span = stall_heartbeat.tail_gaps(hb_path, gap_s=min_gap)
     if span is None:
         return [], 'heartbeat-empty: %s' % hb_path
+    # UM RELOGIO VELHO NAO TESTEMUNHA O LOG DE HOJE (medido 2026-11-26): um
+    # ficheiro de outra sessao faria os buracos desta parecerem SHELL-ONLY.
+    last_log = max(pts)
+    if span[1] < last_log - STALE_S:
+        return [], ('heartbeat-stale: last tick %.0f s before the log'
+                    % (last_log - span[1]))
     return classify(log_holes, hb_holes), ''
 
 
@@ -192,6 +201,15 @@ def _selftest():
         ok &= (rows == [] and why.startswith('no-heartbeat'))
         print('  d-no-heartbeat-is-refused  %s  %s'
               % ('ok' if rows == [] and why.startswith('no-heartbeat') else 'FAIL', why))
+        # (e) STALE HEARTBEAT: it cannot vouch for a newer log.
+        e_log = os.path.join(tmp, 'e.log')
+        e_hb = os.path.join(tmp, 'e.hb')
+        write_log(e_log, [base + 600, base + 610])
+        write_hb(e_hb, [base + i for i in range(0, 5)])
+        rows, why = analyse(e_log, e_hb, min_gap=5.0)
+        ok &= (rows == [] and why.startswith('heartbeat-stale'))
+        print('  e-stale-heartbeat-refused   %s  %s'
+              % ('ok' if rows == [] and why.startswith('heartbeat-stale') else 'FAIL', why))
     finally:
         import shutil
         shutil.rmtree(tmp, ignore_errors=True)
