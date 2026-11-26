@@ -2,9 +2,12 @@
 
 Everything below was measured against `app/webview/sotto_webview.py` — a revision another lane
 has since appended to: this lane's own bytes ended at **389 256 B, sha256 `C4E04600BF1E4D96…`**,
-and the file is now **397 180 B / sha256 `EA014D8F2CACD72E…` (7 930 lines)** with every marker
-below still present (`_arm_exit_watchdog` `:3115`, `run_hover_probe` `:5426`,
-`set_panel_surface` `:4659`, the `meter` branch `:6843`, `_stats_log_maybe` `:5009`).
+and the file is now **397 180 B / sha256 `EA014D8F2CACD72E…` (7 930 lines)**. As of commit
+`f57f996` (2026-11-26), only three of the five markers below survive in
+`app/webview/sotto_webview.py`: `set_panel_surface` `:22877`, the `meter` branch `:25956` and
+`_stats_log_maybe` `:22422`. `_arm_exit_watchdog` and `run_hover_probe` have **0 occurrences**
+there (`rg -n '_arm_exit_watchdog|run_hover_probe' app/webview/sotto_webview.py` → no output) and
+live only in the frozen `_main/_shell-no-revive.py:3148` / `:5469` (called at `:3206` / `:3802`).
 Measured with `--no-hotkey --no-tray` and a hidden form (`Opacity = 0`), never `--show`.
 
 ### Alt+C opens a STRIP, not the 380×900 panel
@@ -16,11 +19,15 @@ two layouts via `document.body.dataset.surface = 'strip' | 'panel'`.
 - Strip geometry, measured on this box: **`1040×150` at `(440,834)`**, window rect `(440,834,1480,984)`
   — and `984 = 1032 − 48`, i.e. the bottom margin `STRIP_BOTTOM_MARGIN`. Width is
   `clamp(480, 62 % of work width, 1040)` = `clamp(480, 1190, 1040)` = 1040.
-- **THE HEIGHT IS NEVER HARD-CODED.** `panel.css:52` declares `--strip-height: 150px`; the shell READS
-  it with `getComputedStyle` and applies it (`STRIP_HEIGHT_CSS_VAR = '--strip-height'`). Measured
-  `STRIP_HEIGHT from=148 to=150 source=css css_value=150`. The constant
-  `STRIP_HEIGHT_FALLBACK = 148` is a FALLBACK ONLY, and **every time it is used, that fact is logged**
-  — a silent fallback is how a CSS edit stops taking effect without anyone noticing.
+- **THE HEIGHT IS NEVER HARD-CODED.** `app/panel/panel.css:2927` declares `--strip-height: 40px`
+  today; the 150px value measured in 2026-10 belongs to an older CSS revision. The shell READS it
+  with `getComputedStyle(de).getPropertyValue(STRIP_HEIGHT_CSS_VAR)` at
+  `app/webview/sotto_webview.py:22719-22720`, with `STRIP_HEIGHT_CSS_VAR = '--strip-height'` at
+  `app/webview/sotto_webview.py:3360` (the stale `panel.css:52`/`150px` comment at
+  `app/webview/sotto_webview.py:13991-13992` is not the declaration). The constant
+  `STRIP_HEIGHT_FALLBACK = 148` (`app/webview/sotto_webview.py:3349`) is a FALLBACK ONLY, and
+  **every time it is used, that fact is logged** (`app/webview/sotto_webview.py:8543`) — a silent
+  fallback is how a CSS edit stops taking effect without anyone noticing.
 - The panel surface is unchanged: `380×900@(1528,66)`.
 
 **`SetWindowPos` AND ITS ARGTYPES — a real defect this lane found and fixed.** Calling
@@ -118,10 +125,17 @@ arm reported `APPLIED_AT_BOUNDARY` for a respawn that never happened. The compar
 
 The owner said, verbatim: *"passo o mouse encima > aparece mais botoes"*. A CSS read cannot answer the
 real question — *if the reveal is CSS-only inside a small window, are the buttons still inside the
-hit-test, or clipped out of it?* — so `_strip-hover-probe.py` drives the shell's own
-`--probe-hover`, which synthesises a REAL renderer hover through CDP
-`Input.dispatchMouseEvent` (no physical cursor is ever moved; the owner's mouse stays where it is) and
-reads the consequence. Measured, window never seen (`Opacity = 0`):
+hit-test, or clipped out of it?* — a hover probe that synthesises a REAL renderer hover through CDP
+`Input.dispatchMouseEvent` (no physical cursor is ever moved; the owner's mouse stays where it is)
+and reads the consequence is the right instrument. **It is not in the live tree** (commit `f57f996`,
+2026-11-26): `app/webview/sotto_webview.py` has no `--probe-hover` (0 hits) and declares six
+`--probe-*` flags at `app/webview/sotto_webview.py:27783,27789,27791,27811,27813,27829`
+(measurement flags at `:13857-13860,13872-13873`); `_main/_strip-hover-probe.py` is neither on disk
+nor tracked (`git ls-files '*strip*hover*'` → empty) and `_main/_audit-verify-all.cmd` has no hover
+step (`rg -n -i hover _main/_audit-verify-all.cmd` → 0 hits). The CDP hover code survives only in
+the frozen `_main/_shell-no-revive.py:5373,5455,5462,5469,7693`, which declares `--probe-hover` at
+`_main/_shell-no-revive.py:7697`. The measurements below are a historical record, not a gate the
+battery still re-runs. Measured then, window never seen (`Opacity = 0`):
 
 - **STRIP surface** (`inner 1040×150`, `.stripbar` `display:flex`, `opacity:1`, `visibility:visible`):
   all **four** buttons are laid out (`64×26`, `60×26`, `80×26`, `83×26`), all `in_viewport:true`, and

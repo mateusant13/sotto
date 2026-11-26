@@ -37,7 +37,10 @@ caixa** (`refresh token already used` → 401; para o reanimar é `codex logout`
   conteúdo útil está lá; a limpeza é nossa antes de citar.
 - Sessões ficam em `C:\Users\Administrador\Desktop\consult-chatgpt\consultgpt\sessions\`.
 - `--headed` mostra o browser, `--headed-offscreen` mostra escondido; **por omissão é headless** (não
-  abre janela nenhuma — respeita a regra da casa).
+  abre janela nenhuma — respeita a regra da casa). These flags are real in this tool (`gpt help` lists
+  both) and `agent-browser --help:256` also exposes `--headed`, but they CONFLICT with `AGENTS.md:90`
+  ("não há `--headed` em caminho nenhum desta casa"); the owner's order in `AGENTS.md:90` wins for
+  lanes, so a lane must never pass `--headed` and launch a visible window.
 - `--list` / `--show` leem respostas guardadas de uma sessão.
 
 ## O MODO DE FALHA que já vimos (importante: ele FALHA em silêncio)

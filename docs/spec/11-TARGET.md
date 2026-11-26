@@ -157,7 +157,7 @@ ficheiro `history/<dia>/<hora>.md`; a busca lê o mesmo ficheiro. As linhas **pa
 **Número.** Toda linha admitida existe no ficheiro; busca por uma palavra da linha devolve essa
 linha; exportar não perde nenhuma.
 
-**Instrumento.** `_main/history-route-oracle.py` (duas populações: stream curto e longo),
+**Instrumento.** `_main/history-route-oracle.js` (Node; duas populações: stream curto e longo, passos `_main/_audit-verify-all.cmd:3561-3562`; `git ls-files _main/history-route-oracle.py` → empty),
 `_main/history-write-oracle.py`, `_main/history-context-oracle.py`.
 
 **A linha recusada não se perde em silêncio (decisão, D-23).** Enquanto o player manda no ecrã, a
