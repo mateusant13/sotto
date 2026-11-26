@@ -129,6 +129,15 @@ def analyse(session, duration, history_rows, day=None, minutes=5.0):
         return {'a': (False, 'sem sessao no log'), 'verdict': 'CANNOT-MEASURE',
                 'why': 'no-session'}
 
+    # DISPLAY DESLIGADO NAO E' DEFEITO DE CADENCIA (2026-11-26). Uma sessao em
+    # modo lane diz `CAPTION_WANTED_START on=false`: nesse modo nao existe cue
+    # nem pintura POR CONFIGURACAO, e julgar `why=b` seria chamar defeito ao que
+    # o interruptor desligou. Refusa pelo nome, antes da barra de duracao.
+    if any(' CAPTION_WANTED_START on=false' in row['body'] for row in session):
+        results['a'] = (False, 'CAPTION_WANTED_START on=false')
+        return {'a': results['a'], 'verdict': 'CANNOT-MEASURE',
+                'why': 'display-off', 'duration': duration}
+
     # a DURACAO -- um soak de 35 s nao pode passar por um de 5 min.
     if duration < minutes * 60.0:
         results['a'] = (False, 'duration=%.0fs bar=%.0fs'
@@ -253,9 +262,12 @@ def _stamp(offset):
 
 
 def _fixture(minutes=6, paint_gap=0.5, finals=8, history=True, agree=True,
-             cues=True):
+             cues=True, display_off=False):
     """Uma sessao sintetica na FORMA da do dono, com os numeros sob controlo."""
     lines = [_stamp(0) + ' sotto: SHELL_STARTUP_STAGE pid=1 stage=pre-lock']
+    if display_off:
+        lines.append(_stamp(0) + ' sotto: CAPTION_WANTED_START on=false '
+                     'reason=lane(SOTTO_LANE_LAUNCH=1) stored=false')
     span = minutes * 60.0
     step = 0.0
     index = 0
@@ -325,6 +337,7 @@ def neg_arm():
         ('no-cues-at-all', dict(cues=False), 'b', 'no-cues'),
         ('history-silent', dict(history=False), 'd', None),
         ('short-session', dict(minutes=2), 'a', None),
+        ('display-off-session', dict(display_off=True, cues=False), 'a', 'display-off'),
     )
     for label, kwargs, owner, refusal in specs:
         text, rows = _fixture(**kwargs)

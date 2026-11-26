@@ -559,6 +559,13 @@ account, that is a HOLE with a named reason (`CANNOT-MEASURE`), listed in the re
 never converted into "the owner should run this". Second, a new instrument ships with its red arm
 and with its row in the battery in the SAME change; an instrument nobody runs is not an instrument.
 
+A LIVE row carries its environment in a `pre` column, and the harness asks it before the command.
+`pre` exits 0 only when the victim exists (a `/watch` tab with `readyState>0` and a player that is
+playing); every other rc is printed as `CANNOT-MEASURE precondition refused (rc=3): <the command>`,
+so a missing app or tab is a named refusal instead of a green on nothing or a red for the weather.
+Measured 2026-11-26 in both directions: a precondition that holds gives `PASS` with its red arm
+refused (neg rc=1), a precondition that fails gives `CANNOT-MEASURE` and the runner exits 2.
+
 ## UMA PAUSA QUE A MEDIDA DESMENTIU NAO APAGA O ECRA (ordem do dono, 2026-11-26)
 
 Verbatim: *"i just opened sotto, went to youtube, subtitles from youtube worked for like 2 seconds and

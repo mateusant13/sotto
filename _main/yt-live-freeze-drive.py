@@ -51,6 +51,7 @@ PLANS = {'full': PLAN, 'pause-only': PLAN[:2]}
 PROBE_JS = ("(()=>{var v=document.querySelector('video'),mp=document.getElementById('movie_player');"
             "return JSON.stringify({t:v?+v.currentTime.toFixed(3):null,paused:v?v.paused:null,"
             "st:(mp&&mp.getPlayerState)?mp.getPlayerState():null,rs:v?v.readyState:null,"
+            "vid:(new URLSearchParams(location.search)).get('v'),"
             "muted:v?v.muted:null})})()")
 
 MUTE_JS = ("(()=>{var v=document.querySelector('video');"
@@ -145,8 +146,19 @@ def selftest():
 
 # ------------------------------------------------------------- o browser ---
 def _targets(port):
-    with urllib.request.urlopen('http://127.0.0.1:%d/json/list' % port, timeout=3) as fh:
-        return json.load(fh)
+    """As abas do porto. Um porto morto e' LISTA VAZIA, nao uma excecao.
+
+    MEDIDO 2026-11-26: com o browser fechado o `urlopen` levantava
+    `URLError` e o driver morria com rc 1 -- a pior resposta possivel, porque a
+    recusa (`CANNOT-MEASURE reason=no-watch-tab`, rc 3) e' justamente o que a
+    precondicao do harness le. Nada aqui pode confundir "nao ha browser" com
+    "o instrumento apagou fogo".
+    """
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:%d/json/list' % port, timeout=3) as fh:
+            return json.load(fh)
+    except (urllib.error.URLError, OSError, ValueError):
+        return []
 
 
 def _connect(port):
@@ -198,9 +210,30 @@ def main(argv=None):
     ap.add_argument('--settle', type=float, default=6.0,
                     help='segundos a esperar o recibo de cada passo')
     ap.add_argument('--selftest', action='store_true')
+    ap.add_argument('--pre', action='store_true',
+                    help='so\' a pergunta do ambiente: 0 quando ha aba /watch a tocar')
     args = ap.parse_args(argv)
     if args.selftest:
         return selftest()
+
+    if args.pre:
+        # A PRECONDICAO DA CLASSE VIVA (2026-11-26). O harness pergunta
+        # isto antes de correr um passo que so' faz sentido com app e aba:
+        # rc 0 = ha um player a tocar, rc 3 = nao ha, com o motivo a' vista.
+        # Sem sessao o YouTube responde `LOGIN_REQUIRED` e o `<video>` fica
+        # com `readyState=0` -- e' essa a recusa que este modo nomeia.
+        ws0, tab0 = _connect(args.port)
+        if ws0 is None:
+            print('PRE CANNOT-MEASURE reason=no-watch-tab port=%d' % args.port)
+            return 3
+        state0 = json.loads(_eval(ws0, PROBE_JS, 2))
+        ws0.close()
+        if state0.get('paused') is not False or int(state0.get('rs') or 0) == 0:
+            print('PRE CANNOT-MEASURE reason=not-playing paused=%s rs=%s'
+                  % (state0.get('paused'), state0.get('rs')))
+            return 3
+        print('PRE OK vid=%s t=%s' % (state0.get('vid'), state0.get('t')))
+        return 0
 
     ws, tab = _connect(args.port)
     if ws is None:
