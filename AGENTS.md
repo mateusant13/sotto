@@ -683,8 +683,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **436259 B**,
-  **4972 CRLF** / 0 bare LF, sha256 `BD2669533FC88B62087043712C60E796AF229C6DA86C008115FD48676B4A3155`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **437655 B**,
+  **4989 CRLF** / 0 bare LF, sha256 `C8C08FBFB07E907DE13F8CA675FF499DBF1A4567CFDEF7C07D60FB9F71EDBDFC`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -705,7 +705,11 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   E `yt-reveal-hold` + `red-as-expected-yt-reveal-hold`: o tecto de 3 s do relogio da
   revelacao (`_PlayerCue.clock`) parava a linha em SILENCIO -- agora nomeia o episodio
   (`CAPTION_REVEAL_HELD gap_s=.. lost_s=..`) e o oraculo prova que ele nunca inventa mais
-  de `PLAYER_HOLD_S` de video, com o buraco de 8,2 s medido no log dele como arm.)
+  de `PLAYER_HOLD_S` de video, com o buraco de 8,2 s medido no log dele como arm.
+  E `overlay-ink` + `red-as-expected-overlay-ink`: a metade dos PIXEIS, lida do bitmap GDI+
+  FORA DO ECRA (tema sem placa, logo cada pixel com alfa e' glifo): tinta para a linha dele,
+  largura de tinta a seguir o texto, rasters diferentes por texto, zero tinta para legenda
+  vazia, e A->B->A de volta ao raster de A -- o cache de pintura nao serve outra linha.)
 
 ## `git rm --cached` SO' CONTA QUANDO `git ls-tree HEAD` CONCORDA (medido 2026-11-26)
 

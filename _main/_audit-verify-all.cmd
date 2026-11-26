@@ -1612,6 +1612,23 @@ if exist _main\yt-reveal-hold-oracle.py (
 call :step red-as-expected-yt-reveal-hold 1 "_main\yt-reveal-hold-oracle.py;app\webview\caption_overlay.py" "%OUT%\yt-reveal-hold-neg.log" python _main\yt-reveal-hold-oracle.py --neg-arm
 call :expectred red-as-expected-yt-reveal-hold !STEP_RC! "%OUT%\yt-reveal-hold-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-yt-reveal-hold MISSING "%OUT%\yt-reveal-hold-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `overlay-ink` (2026-11-26): a metade dos PIXEIS. A legenda nativa corre
+REM `overlay_paint._layout` + `_premultiplied_bitmap` e desenha no GDI+; este
+REM oraculo le o bitmap FORA DO ECRA, pixel a pixel, com o tema sem placa -- logo
+REM cada pixel com alfa E' tinta de glifo. Ele exige tinta para a linha do dono
+REM (8428 px amostrados), largura de tinta que segue o TEXTO ("I" 17 px contra
+REM "MMMMMMMM" 453), rasters diferentes para textos diferentes, ZERO tinta para
+REM legenda vazia, e A->B->A de volta ao raster de A. O braco negativo apaga os
+REM glifos, ignora o texto e tira o texto da chave do cache. Nada disto abre
+REM janela: o oraculo nao toca no ecra de ninguem.
+if exist _main\overlay-ink-oracle.py (
+ call :step overlay-ink 0 "_main\overlay-ink-oracle.py;app\webview\overlay_paint.py" "%OUT%\overlay-ink.log" python _main\overlay-ink-oracle.py
+ call :record overlay-ink !STEP_RC!
+) else ( call :record overlay-ink MISSING )
+if exist _main\overlay-ink-oracle.py (
+call :step red-as-expected-overlay-ink 1 "_main\overlay-ink-oracle.py;app\webview\overlay_paint.py" "%OUT%\overlay-ink-neg.log" python _main\overlay-ink-oracle.py --neg-arm
+call :expectred red-as-expected-overlay-ink !STEP_RC! "%OUT%\overlay-ink-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-overlay-ink MISSING "%OUT%\overlay-ink-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `yt-producer-soak` (2026-11-26): 5 MINUTOS SIMULADOS de leitura com um
 REM produtor que publica no proprio relogio (1 s, 3 s e os 8,8 s medidos na
 REM sessao do dono). Julga que CADA publicacao sai uma vez, dentro da janela de
