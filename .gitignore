@@ -321,10 +321,14 @@ _main/_yt-1to1-live*.json
 .agent-work/
 .agent-work
 .pi/
-# Run records of the closure gates (machine state).
+# Run records of the closure gates (machine state). `goal.json` is the same store one level up:
+# the gate rewrites `status`/`count`/`max`/`rounds` in place after every run (measured 2026-11-26:
+# mtime moves without any lane touching it), so it is state, not source -- the objective itself is
+# quoted verbatim in AGENTS.md and in receipts.
 .opencode/.closure-gate.json
 .opencode/.closure-gate-history.json
 .opencode/goal.previous-*.json
+.opencode/goal.json
 *.bak
 
 # Tool caches and agent scratch (2026-11-04): .codeintel/ is 167 MB of a derived
