@@ -144,3 +144,29 @@ ever moved` and verdict `REFUTE`.
 - One comparator for refutation (cumulative counters bound the quoted rate).
 - A ceiling is quoted with its source line or declared `NOT DECLARED`; never
   fabricated.
+
+## A DM that declares itself CANNOT-MEASURE has no rate to judge (measured 2026-11-26)
+
+`dm-81956decf09eec356bb0` arrived with the watcher's own honest refusal inside the subject:
+
+    STUTTER (owner): python.exe(72760) is the top measured pressure, signals: tick-gap,
+    not-scheduled — CANNOT-MEASURE this tree's rate: the governor's tick was stalled
+    (tick-gap, not-scheduled), so the sampled number is a queue position, not the culprit's CPU
+
+and the tool answered `DM-TRIAGE CANNOT-MEASURE why=unparsed-section line=4` — honest, because it
+invented no number, and useless, because the checkable half of that DM is its **identity and chain**.
+
+- **Class `STUTTER-unmeasured`** (subject contains `stutter` and `cannot-measure`) yields a
+  `Claim(metric="identity")`. The rate is then refused **by name**
+  (`DM-TRIAGE CANNOT-MEASURE why=no-rate-in-claim`) and never printed as a `0.0` dressed as a
+  measurement.
+- **A dead culprit is not a foreign culprit.** With no live pid, ownership is still provable from
+  the DM's own declared ancestors (`proof=ancestor-pid=<p>`), because a battery step routinely ends
+  before the question arrives; when neither the pid nor any declared ancestor is alive and mine,
+  the verdict is `UNKNOWN`, not `MISATTRIBUTED` (which asserts that the tree belongs to someone
+  else).
+- `--facts-only` wins over the identity short-circuit, so parsing can be inspected with no live
+  sampling at all.
+- Oracle: `_main/dm-triage-oracle.py` — arms a–f and three module mutants
+  (`NEG-ARM: PASS -- 3 caught, 0 missed of 3`, rc 1). Battery row `dm-triage` +
+  `red-as-expected-dm-triage` is owed: the `.cmd` must not be edited while a run is in flight.
