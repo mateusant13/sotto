@@ -1,3 +1,4 @@
+# NO-BUG: observability: measures the CDP source retry cooldown -- the first failure waits 5 s and names tries/next_s, delays double up to a 60 s cap, due is a real deadline, two failures recover at 4 Hz while the old tombstone never does, the shell asks due before re-arming and resets on success, and import failures and a parked source are handled; no ledger id
 """Oracle for the CDP source retry cooldown.
 
 MEASURED 2026-11-26: `_yt_cdp_ensure` set `False` on one failed `start()` and

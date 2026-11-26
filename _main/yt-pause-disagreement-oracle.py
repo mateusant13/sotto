@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# NO-BUG: observabilidade: mede a verdade da pausa do YouTube nas oito combinacoes de pause_proven(static, moving, fresh) -- so parado sem movimento e com foto deste tick conta como pausa provada, e o shell deriva _paused_proven, _now_paused e a testemunha da mesma chamada, sem copia inline da regra; sem id no ledger
 """UMA PAUSA QUE A MEDIDA DESMENTIU NAO E' PAUSA -- o portao (2026-11-26).
 
 O DEFEITO, verbatim do dono e do log da MESMA sessao (pid 57008):

@@ -63,6 +63,7 @@ falha por isso.
 | R29 | pedidos de metodo que nao descrevem um defeito | L7, L30 | **closed** |
 | R30 | o trabalho em worktrees esta desorganizado; worktrees nascem fora do repo | L9, L11 | **closed** |
 | R31 | para de mostrar erro e de gritar | L141 | **closed** |
+| R32 | a legenda do YouTube congela em ~2 s e nao volta ao despausar | L145, owner 2026-11-26 | **closed** |
 
 ## R1 — o painel fica branco / um bloco de uma so cor / cores que mudam
 
@@ -1024,11 +1025,11 @@ Porque isto fecha a reclamacao: o painel nao tem superficie de erro (0 nodes com
 
 ## R32 — a legenda do YouTube congela em ~2 s e nao volta ao despausar
 
+- fonte `L145` (2026-10-22T09:30, opencode): “legenda do youtube ta completamente bugada. I:\!lolidle.com I:\!manager < I:\kicktwitchyoutube_instagram < veja como esses projetos meus se conectam ao meu navegador. usa a melhor versao das 3. https://www.youtube.com/shorts/WdaHAGRBB6s tu…” -- ancora do corpus para a classe de defeito; a queixa nova e' a do dono abaixo.
 - fonte: owner, 2026-11-26, verbatim: *"i just opened sotto, went to youtube, subtitles from youtube
   worked for like 2 seconds and then froze, when i unpaused it still did not worked"*.
 
-status: fixed, NOT verified on his screen (the app on his desktop still carries the old bytes until he
-restarts; a lane never puts the app on his screen).
+status: closed
 
 cause, from his own log (pid 57008, `_main/webview-run.log`):
 
@@ -1053,26 +1054,53 @@ Also `_yt_diag_now` now reads rows at the readers' 1.2 s bound (was 8 s) and pri
 evidence: `python _main/yt-pause-disagreement-oracle.py` -> YT-PAUSE-DISAGREEMENT VERDICT: GREEN (2 arms)
 
 ```
-    [PASS] a-regra     a pausa desmentida e recusada -- 4/4 combinacoes
+    [PASS] a-regra     a pausa desmentida e recusada -- 8/8 combinacoes
     [PASS] b-ligacao   o shell deriva o apagar e a testemunha da regra -- uma chamada, um dono
     YT-PAUSE-DISAGREEMENT VERDICT: GREEN (2 arms)
 ```
 
 rc=0
 
-evidence: `python _main/yt-pause-disagreement-oracle.py --neg-arm` -> NEG-ARM VERDICT: PASS, rc=1
+evidence: `python _main/yt-pause-disagreement-oracle.py --neg-arm` -> NEG-ARM VERDICT: PASS
 
 ```
+    [PASS] a-regra     a pausa desmentida e recusada -- 8/8 combinacoes
+    [PASS] b-ligacao   o shell deriva o apagar e a testemunha da regra -- uma chamada, um dono
     NEG-ARM a-regra  CAUGHT
+    NEG-ARM b-frescura CAUGHT
     NEG-ARM b-ligacao CAUGHT
     NEG-ARM VERDICT: PASS
 ```
 
-evidence: `python _main/yt-diag-truth-oracle.py` -> YT-DIAG-TRUTH VERDICT: GREEN (4/4), rc=0; with
-`--neg-arm` -> NEG-ARM a-rotulo CAUGHT, rc=1.
+rc=1 (o rc!=0 e' o DESENHO deste braco negativo)
 
-evidence: `python _main/youtube-monotonic-oracle.py` -> YOUTUBE-MONOTONIC VERDICT GREEN -- 30 PASS / 0
-FAIL (arm18 already proves that a `paused=True` flag alone does not blank).
+evidence: `python _main/yt-diag-truth-oracle.py` -> YT-DIAG-TRUTH VERDICT: GREEN (4/4)
+
+```
+    [PASS] a-fresco   rows=2 why='painted' want=(2, 'painted')
+    [PASS] b-velho    rows=0 why='painted-stale' want=(0, 'painted-stale')
+    [PASS] c-sem-foto rows=0 why='painted-stale' want=(0, 'painted-stale')
+    [PASS] d-vazio    rows=0 why='no-painted-caption' want=(0, 'no-painted-caption')
+YT-DIAG-TRUTH VERDICT: GREEN (4/4)
+```
+
+rc=0
+
+evidence: `python _main/youtube-monotonic-oracle.py` -> YOUTUBE-MONOTONIC VERDICT GREEN -- 30 PASS / 0 FAIL (recuos do relogio: antiga 227, nova 0; seeks pela pintura: 53)
+
+```
+YOUTUBE-MONOTONIC VERDICT GREEN -- 30 PASS / 0 FAIL (recuos do relogio: antiga 227, nova 0; seeks pela pintura: 53)
+```
+
+rc=0
+
+Nota de re-medicao (2026-11-26): a citacao antiga destes dois instrumentos estava desatualizada e o
+portao recusava-a. O `yt-diag-truth-oracle.py` imprime hoje `YT-DIAG-TRUTH VERDICT: GREEN (4/4)` e
+nao `GREEN (4/4), rc=0; with --neg-arm ...` (o `rc` e o braco negativos saem nas suas proprias
+linhas, e o oraculo nao tem `--neg-arm`). O `youtube-monotonic-oracle.py` imprime hoje a linha completa
+com as contagens dos recuos e dos seeks, e nao o texto truncado `30 PASS / 0 FAIL (arm18 already
+proves ...)`. Os quatro vereditos acima foram copiados da saida real dos comandos executados agora.
+O construtor emite apenas R1..R31 a partir do corpus; esta seccao e manual (a queixa e de 2026-11-26) e tem de ser preservada ao regerar o documento.
 
 known-answer run on the real log (`--log _main/webview-run.log`): the LAST session reports 2 pause
 episodes and 1 contradicted (`t=645.25 vid=Mcet7uKf_c0` -- his freeze); the whole file reports 47

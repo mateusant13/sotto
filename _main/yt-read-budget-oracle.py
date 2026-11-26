@@ -1,3 +1,4 @@
+# NO-BUG: observability: measures the accessibility-tree read envelope -- a fast read clears any hold, at the budget there is no hold but above it the hold is proportional and named (15906 ms buys 47.7 s), serving_cached is strict and garbage-safe, the module stays pure, the shell gates the tree call and serves the last words in backoff, and the 4 Hz cadence returns; no ledger id
 """Oracle for the accessibility-tree caption read envelope.
 
 MEASURED 2026-11-26 (owner's session, pid 103760): one UIA caption read blocked

@@ -1,3 +1,4 @@
+# NO-BUG: observability: measures whether the heartbeat tells a machine stall from the shell's own GIL -- the line carries n/t/m, a planted hole is found while a clean minute stays clean, garbage and missing/empty files are never called clean, a file with a hole reads back, the child ticks at 1 Hz and dies with its pipe, the first tick is immediate and the shell starts it first with stdin; no ledger id
 """The heartbeat can tell a machine stall from the shell's own GIL — or it cannot.
 
 The instrument is `app/webview/stall_heartbeat.py`: a separate process writing one

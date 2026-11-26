@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# NO-BUG: observabilidade: mede os tectos dos tres journals do ring -- acima do tecto a poda guarda o mais novo e encolhe o ficheiro, abaixo do tecto os bytes nao mudam, _prune nomeia gaps/index/lines e o escritor de lines fecha o seu proprio tecto, e layout.md declara constantes com o valor que o codigo le (sem numeros de linha); sem id no ledger
 """TODO STORE TEM TECTO E O TECTO E' O QUE O CODIGO LE -- o portao (2026-11-26).
 
 O DEFEITO, medido em 2026-11-26: `worker/audio_ring.py::_prune` desce so' nas

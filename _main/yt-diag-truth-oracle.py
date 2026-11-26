@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# NO-BUG: integridade do instrumento: mede se o rotulo do log sobrevive a foto que o produziu -- foto fresca com 2 linhas da rows=2/why=painted, foto de 8 s e a ausencia de foto dao rows=0/why=painted-stale, e uma foto fresca vazia preserva o rotulo do player; sem id no ledger
 """UM ROTULO NAO SOBREVIVE A' FOTO QUE O PRODUZIU -- o portao (2026-11-26).
 
 O DEFEITO, medido no log do dono (pid 57008, sessao em que ele disse "subtitles
