@@ -402,6 +402,58 @@ def neg_arm():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _record_args(own):
+    """As bandeiras `--record-*` em `own` viram um kwargs para `record()`.
+
+    Devolve `None` quando o passo nao pediu registo -- o caminho antigo fica
+    byte-identico. Os nomes sao o contrato com a bateria, nao uma invencao:
+    `--record-step/--record-expect/--record-deps/--record-state/--record-t0/
+    --record-policy/--record-log`.
+    """
+    if '--record-step' not in own:
+        return None
+    def take(flag, default=None):
+        if flag not in own:
+            return default
+        return own[own.index(flag) + 1]
+    return dict(
+        step=take('--record-step'),
+        expect_rc=int(take('--record-expect', '0')),
+        deps=take('--record-deps', ''),
+        state_path=take('--record-state'),
+        t0=take('--record-t0'),
+        policy=take('--record-policy'),
+        log=take('--record-log'))
+
+
+def _write_record(kw, rc):
+    """Escreve a linha da cache no processo que JA' correu o passo.
+
+    Duas recusas sao de proposito: um `--record-step` sem `--record-state`
+    (nao ha' onde escrever) e qualquer excecao do proprio `_stepcache` -- nos
+    dois casos imprime-se uma linha nomeada e o rc do passo NAO muda. Perder o
+    registo custa uma recomputacao na proxima corrida; inventar um rc custa a
+    bateria inteira.
+    """
+    if not kw.get('state_path'):
+        sys.stderr.write('STEP-RECORD-FAILED step=%s reason=no-state\n'
+                         % kw.get('step'))
+        return
+    try:
+        sys.path.insert(0, HERE)
+        stepcache = __import__('_stepcache')
+        ok, reason = stepcache.record(
+            kw['step'], kw['deps'], rc, log=kw.get('log'),
+            expect_rc=kw['expect_rc'], state_path=kw['state_path'],
+            t0=kw.get('t0'), policy=kw.get('policy'))
+        if not ok:
+            sys.stderr.write('STEP-RECORD-FAILED step=%s reason=%s\n'
+                             % (kw['step'], reason))
+    except Exception as exc:  # noqa: BLE001 -- o rc do passo e' a verdade
+        sys.stderr.write('STEP-RECORD-FAILED step=%s reason=%s: %s\n'
+                         % (kw.get('step'), type(exc).__name__, exc))
+
+
 def main(argv):
     # AS BANDEIRAS DESTE WRAPPER VIVEM SO' ANTES DO `--`. A primeira versao
     # procurava `--neg-arm` em TODO o argv -- e o argv inclui os tokens do FILHO,
@@ -419,6 +471,15 @@ def main(argv):
         if '--seconds' in own:
             i = own.index('--seconds')
             del own[i:i + 2]
+    # O RECIBO DA CACHE NO MESMO INTERPRETADOR (medido 2026-11-26). Cada passo
+    # que CORRE arrancava DOIS interpretadores: este wrapper e, a seguir, um
+    # `pythonw _main\_stepcache.py record` -- medido 0,07 s por registo, 348
+    # passos por corrida. O `--record-*` faz o registo aqui dentro, com o rc e o
+    # `t0` que este processo ja' tem. As flags vivem SO' antes do `--` (a mesma
+    # armadilha do `--neg-arm`: o argv do filho nao se le' como configuracao).
+    # Falhar o registo NUNCA muda o rc do passo: sem registo a proxima corrida
+    # recomputa o passo -- um cache MISS, nunca um verde falso.
+    record = _record_args(own)
     if '--neg-arm' in own:
         return neg_arm()
     if '--selftest' in own:
@@ -431,6 +492,8 @@ def main(argv):
         sys.stderr.write('step-deadline: sem comando depois de `--`\n')
         return 1
     rc, _ = run_with_deadline(child, seconds=seconds)
+    if record:
+        _write_record(record, rc)
     return rc
 
 

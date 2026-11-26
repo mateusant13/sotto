@@ -910,8 +910,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **444845 B**,
-  **5071 CRLF** / 0 bare LF, sha256 `AE7BD37FF6274F366FDFD42559E2B14D70CD6B412F52D97B0D5BB56F3BFC8873`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **445321 B**,
+  **5077 CRLF** / 0 bare LF, sha256 `D14F9057EB5A54F2F6247DC298240E3AB9EFCEE6B528C11982ABD4F6DF2C2DDA`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
