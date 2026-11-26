@@ -1673,6 +1673,21 @@ if exist _main\yt-read-budget-oracle.py (
 call :step red-as-expected-yt-read-budget 1 "_main\yt-read-budget-oracle.py;app\webview\yt_read_budget.py;app\webview\sotto_webview.py" "%OUT%\yt-read-budget-neg.log" python _main\yt-read-budget-oracle.py --neg-arm
 call :expectred red-as-expected-yt-read-budget !STEP_RC! "%OUT%\yt-read-budget-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-yt-read-budget MISSING "%OUT%\yt-read-budget-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `yt-cdp-retry` (2026-11-26): a fonte CDP tinha um SENTINELA como lapide --
+REM uma excecao transitoria de `start()` desligava o caminho barato para o resto
+REM da sessao, a leitura caia na arvore (15906 ms medidos) e o laco de 4 Hz
+REM congelava sem erro a' vista. Agora a falha arma um COOLDOWN (5 s a duplicar
+REM ate' 60 s) e cada armar escreve `YOUTUBE_CDP_SOURCE_RETRY tries=.. next_s=..`;
+REM o arm de recuperacao conduz duas falhas e uma boa largada em 300 s de ticks a
+REM 4 Hz, com o controle da lapide ao lado (nunca recupera).
+if exist _main\yt-cdp-retry-oracle.py (
+ call :step yt-cdp-retry 0 "_main\yt-cdp-retry-oracle.py;app\webview\yt_cdp_retry.py;app\webview\sotto_webview.py" "%OUT%\yt-cdp-retry.log" python _main\yt-cdp-retry-oracle.py
+ call :record yt-cdp-retry !STEP_RC!
+) else ( call :record yt-cdp-retry MISSING )
+if exist _main\yt-cdp-retry-oracle.py (
+call :step red-as-expected-yt-cdp-retry 1 "_main\yt-cdp-retry-oracle.py;app\webview\yt_cdp_retry.py;app\webview\sotto_webview.py" "%OUT%\yt-cdp-retry-neg.log" python _main\yt-cdp-retry-oracle.py --neg-arm
+call :expectred red-as-expected-yt-cdp-retry !STEP_RC! "%OUT%\yt-cdp-retry-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-yt-cdp-retry MISSING "%OUT%\yt-cdp-retry-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `yt-producer-soak` (2026-11-26): 5 MINUTOS SIMULADOS de leitura com um
 REM produtor que publica no proprio relogio (1 s, 3 s e os 8,8 s medidos na
 REM sessao do dono). Julga que CADA publicacao sai uma vez, dentro da janela de

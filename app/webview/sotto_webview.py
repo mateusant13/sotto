@@ -74,6 +74,7 @@ import prose_punct
 #: o oraculo conduz `pause_proven` sem subir a shell nem tocar no dispositivo.
 import youtube_clock
 import yt_read_budget
+import yt_cdp_retry
 #: A CORRIDA que o decodificador inventou (`come come come ...`), cortada no
 #: texto ja' emitido (2026-11-11). Puro, e com a mesma regra estreita que o
 #: oraculo executa; ver `app/webview/text_normalize.py`.
@@ -5540,7 +5541,22 @@ class ExternalCaptionWatcher(threading.Thread):
             return None
         source = getattr(self, '_yt_cdp_source', None)
         if source is False:
-            return None
+            # UM SENTINELA NAO E' UMA LAPIDE (2026-11-26, MEDIDO). Uma
+            # excecao transitoria de `start()` desligava o CDP para o
+            # RESTO da sessao (`return None` em cada tick), a leitura da
+            # legenda caia na arvore (15906 ms medidos), o laco de 4 Hz
+            # caia a 0,1-1,5 Hz e o ecra congelava -- sem erro nenhum a
+            # vista. Agora a falha arma um COOLDOWN: 5 s a duplicar ate'
+            # 60 s, e cada armar escreve `YOUTUBE_CDP_SOURCE_RETRY`.
+            _now = time.monotonic()
+            if not yt_cdp_retry.due(getattr(self, '_yt_cdp_fail_tries', 0),
+                                    getattr(self, '_yt_cdp_retry_at', 0.0),
+                                    _now):
+                return None
+            log('YOUTUBE_CDP_SOURCE_COOLDOWN_END tries=%d'
+                % int(getattr(self, '_yt_cdp_fail_tries', 0)))
+            self._yt_cdp_source = None
+            source = None
         if source is None:
             # A FONTE NASCE NO ARRANQUE E E' UMA SO' (2026-11-04). MEDIDO no
             # log do dono: `start_caption_pipeline` (SottoShell) chamava
@@ -5587,10 +5603,17 @@ class ExternalCaptionWatcher(threading.Thread):
         except Exception as exc:  # noqa: BLE001
             log('YOUTUBE_CDP_SOURCE start_failed=%r' % (exc,))
             self._yt_cdp_source = False
+            _tries = int(getattr(self, '_yt_cdp_fail_tries', 0)) + 1
+            self._yt_cdp_fail_tries = _tries
+            _at, _delay, _event = yt_cdp_retry.arm(_tries, time.monotonic())
+            self._yt_cdp_retry_at = _at
+            log(_event)
             # O registo esquece-a: uma fonte que nao arrancou nao pode ser
             # devolvida a quem pedir a seguir.
             youtube_cdp_source.live_source_clear(source)
             return None
+        self._yt_cdp_fail_tries = 0
+        self._yt_cdp_retry_at = 0.0
         return source
 
     #: QUANTOS SEGUNDOS DE `currentTime` IMOVEL CONTAM COMO PAUSA (2026-11-10).

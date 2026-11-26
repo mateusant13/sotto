@@ -828,8 +828,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **441493 B**,
-  **5033 CRLF** / 0 bare LF, sha256 `1080F819976B545A21B59745FFFDACB23D3D24608A1F741A5EBD3F6B31FC6664`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **442818 B**,
+  **5048 CRLF** / 0 bare LF, sha256 `1E0EF50AB2AA50634D6932795D4276BC0A3A292E143B0851AB1E714EA4BA50C5`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
@@ -859,7 +859,11 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   fusao dao 200 linhas distintas num ficheiro na forma do store, cada linha entregue duas
   vezes nao duplica nada (a forma do defeito "517 de 2077"), crescer reescreve, repetir
   noutro `start` entra e encolher nao apaga o rabo -- o que fecha tambem a idempotencia no
-  transcrito. E `yt-read-budget` + `red-as-expected-yt-read-budget`: o ramo UIA da leitura da
+  transcrito. E `yt-cdp-retry` + `red-as-expected-yt-cdp-retry`: a fonte CDP tinha um SENTINELA como
+  lapide -- uma excecao transitoria de `start()` desligava o caminho barato para o resto da
+  sessao -- e agora arma um cooldown nomeado (5 s a duplicar ate' 60 s,
+  `YOUTUBE_CDP_SOURCE_RETRY tries=.. next_s=..`), provado por um arm que conduz duas falhas
+  e uma boa largada em 300 s de ticks a 4 Hz contra o controle da lapide. E `yt-read-budget` + `red-as-expected-yt-read-budget`: o ramo UIA da leitura da
   legenda ganhou ORCAMENTO com recusa nomeada (`YOUTUBE_UIA_SLOW_BUDGET ms=.. hold_s=..`)
   -- a cadencia simulada com os numeros DELE vai de 0,067 Hz (a leitura de 15906 ms a
   bloquear o laco de 4 Hz) para 2,95 Hz. E `altc-soak` + `red-as-expected-altc-soak`: 200 toques de Alt+C a 3 s no
