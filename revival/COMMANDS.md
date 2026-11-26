@@ -1,0 +1,23 @@
+# Verified Command Sheet — sotto (<= 30 lines)
+
+- `bootstrap`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_bootstrap.py" --project . --goal "..."`
+- `checkpoint`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py" snapshot --repo . --name <label>`
+- `worktree_new`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py" wt-new --repo . --lane <name>`
+- `worktree_land`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py" wt-land --repo . --worktree <wt> --receipt <r.json> --cleanup`
+- `feature_sync`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py" --repo .`
+- `feature_gate`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py" --repo . --gate`
+- `bench_gate`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/benchmark_history.py" run --repo . --label check --gate --blast-radius`
+- `sliders`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/slider_scorecard.py" report --repo .`
+- `friction_gate`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/loop_friction_audit.py" measure --repo . --gate`
+- `codeintel_health`: `codeintel health . --panorama --json` (ver `revival/COMMANDS.md` nota: binario ausente = HOLE nomeado)
+- `codeintel_trace`: `codeintel trace run --json -- <target>`
+- `fast_test`: `python _main/battery-launch.py --only <step> --fast` — um passo a quente, sem correr os 604
+- `fast_test_cached`: `python _main/step-deadline.py --record-step <n> --record-expect <rc> -- python <oracle>` (serve do `_cache/battery-steps.json` quando nada mudou)
+- `offline_twin_yt`: `python _main/yt-capture-replay-oracle.py` — 43 arms sobre fixtures reais do player, sem rede nem sessao (0,3-0,5 s)
+- `offline_twin_paint`: `python _main/yt-headless-paint-oracle.py` — 745 amostras, pior erro 12,133 ms contra 16,667 ms, zero janelas
+- `offline_twin_history`: `python _main/history-replay-oracle.py` — 200 legendas pela regra real de fusao
+- `smoke_e2e_gates`: `python _main/battery-launch.py --verify` (pins, wiring, pares, classe, nomes indefinidos)
+- `smoke_e2e_full`: `python _main/battery-launch.py` — 604 passos, 1080 s a quente / 2391 s a frio (MEDIDO 2026-11-26)
+- `smoke_e2e_live_yt`: `python _main/yt-lane-session.py` (Chrome proprio, porta 9341; a 9222 do dono e' recusada pelo nome)
+- `hole_bend`: `python _main/bend-laws-gate.py` -> `BEND-GATE SKIPPED: NOT INSTALLED` enquanto `ubuntu-bend` nao existir
+- `dm_triage`: `python _main/dm-triage.py <dm.md>` — identidade primeiro, taxa recusada por nome quando o DM a nao da

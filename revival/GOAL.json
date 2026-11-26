@@ -1,0 +1,41 @@
+{
+  "schema": "revival.goal/v1",
+  "created_at": "2026-11-26T20:06:25Z",
+  "updated_at": "2026-11-26T20:06:25Z",
+  "status": "active",
+  "horizon": "multi-day",
+  "statement": "Sotto: YouTube captions in sync (right display at the right time, pause at the right time) and real-time local transcription on the same overlay, with no bugs -- owner: 'i want sotto to be fucking finished and with no bugs'",
+  "charter": "MULTI-DAY EXECUTION CHARTER: Never doubt yourself or declare the mission impossible. It is ALWAYS possible to achieve this goal \u2014 when blocked, shift angles, invent a tool or offline twin, decompose into smaller verifiable slices, snapshot with git, and keep advancing continuously across sessions until 100% of acceptance criteria carry real receipts.",
+  "model_policy": {
+    "audits_and_scouts": "cheapest capable model (prefer DeepSeek)",
+    "implementations_and_orchestration": "DeepSeek or higher (prefer DeepSeek)"
+  },
+  "max_subagents": 40,
+  "acceptance": [
+    {
+      "id": "ACC-01",
+      "text": "Observability, baseline benchmark, and 0-100 paired sliders recorded BEFORE drastic refactors",
+      "receipt": null
+    },
+    {
+      "id": "ACC-02",
+      "text": "All agentic-era inner-loop frictions named and mitigated (<15s loop + offline twins in harness/twins/)",
+      "receipt": null
+    },
+    {
+      "id": "ACC-03",
+      "text": "Macro feature map synced in features/INDEX.md + AGENTS.md Universal Workflow, linked into project gate",
+      "receipt": null
+    },
+    {
+      "id": "ACC-04",
+      "text": "Per-I/O metric budgets (basic -> E2E) + blast-radius check enforced in project gate with zero regressions",
+      "receipt": null
+    },
+    {
+      "id": "ACC-05",
+      "text": "Before-vs-after benchmark diff & slider scorecard show verified improvement across all core user journeys",
+      "receipt": null
+    }
+  ]
+}

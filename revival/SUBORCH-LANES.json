@@ -1,0 +1,49 @@
+{
+  "schema": "project-revival/suborch-lanes@1",
+  "project": "H:/sotto",
+  "updated_at": "2026-11-26T20:20:00Z",
+  "ceiling": {
+    "total_lanes": 40,
+    "max_parallel_host_safe": 4,
+    "declared_before_the_job": "4 headless omp children at a time; each child gets OMP_NUM_THREADS=2/MKL=2 from the controller; one heavy workload (the battery) at a time, so waves run only when no battery is in flight",
+    "fleet_ceiling_owner_law": "30 concurrent subagents is a ceiling, not a target (H:/pi-agent/AGENTS.md §8)"
+  },
+  "domains": [
+    {"domain": "audit-scouts", "role": "audit", "typical_lanes": "8-15", "tier": 1,
+     "note": "read-only, no worktree, never launches the app/browser"},
+    {"domain": "product-core", "role": "implement", "typical_lanes": "6-12", "tier": 2,
+     "note": "each lane owns one file set and lands via git_checkpoint.py wt-land"},
+    {"domain": "infra-gates", "role": "implement", "typical_lanes": "3-6", "tier": 2},
+    {"domain": "benchmarks-twins", "role": "benchmark", "typical_lanes": "3-5", "tier": 2},
+    {"domain": "adversarial-verify", "role": "review", "typical_lanes": "2-4", "tier": 2}
+  ],
+  "lanes": [
+    {"id": "A1-design-contradiction", "domain": "audit-scouts", "role": "audit", "allow_shared_read_only": true,
+     "prompt": "Read H:/sotto/AGENTS.md and docs/*.md; report every claim a grep of the code contradicts, each as path:line on both sides plus the falsifier command. Read-only, no edits, no app launch. Max 25 findings, no prose."},
+    {"id": "A2-wiring", "domain": "audit-scouts", "role": "audit", "allow_shared_read_only": true,
+     "prompt": "In H:/sotto find modules under app/webview/ and worker/ with zero callers, cross-checking _main/dead-unwired-oracle.py's baseline. Report path:line and whether the baseline already declares it dead. Read-only."},
+    {"id": "A3-observability", "domain": "audit-scouts", "role": "audit", "allow_shared_read_only": true,
+     "prompt": "In H:/sotto enumerate the log literals the caption pipeline writes (YOUTUBE_PAUSE_*, CAPTION_*, EXTERNAL_CAPTIONS_*, YT_FRAME, STEP-*) and say for each whether a machine reader exists; produce writer file:line -> reader file:line or NONE. Read-only."},
+    {"id": "A4-perf-instrument", "domain": "audit-scouts", "role": "audit", "allow_shared_read_only": true,
+     "prompt": "Read H:/sotto/_cache/battery-steps.json and report the top-15 costliest steps in seconds, the count of steps >=20s and >=10s, and for the 3 costliest name the exact expensive call as file:line. Read-only, no gate run."},
+    {"id": "A5-harness-fit", "domain": "audit-scouts", "role": "audit", "allow_shared_read_only": true,
+     "prompt": "Read H:/sotto/harness/angles.tsv and report which macro features have zero LIVE/offline angle cells and which cells are HOLEs. Read-only."},
+    {"id": "A6-blast-radius", "domain": "audit-scouts", "role": "audit", "allow_shared_read_only": true,
+     "prompt": "In H:/sotto list every caller of app/webview/youtube_clock.py (pause_proven, SEEK_BACK_S, CLOCK_STATIC_PAUSE_S, CLOCK_MOVING_MIN_RATE, DOM_FRESH_S) and of youtube_monotonic.SeekWitness/advance/decide, marking product vs gate, and state if any product call site lacks an oracle. Read-only."},
+    {"id": "A7-disk-attribution", "domain": "audit-scouts", "role": "audit", "allow_shared_read_only": true,
+     "prompt": "Run `python I:/!watcher/tools/artifact-census.py --project H:/sotto --gate` (single light census, no walk outside the project) and report total GiB, per-store top-5, and any UNPROVEN or truncated entry verbatim. Read-only."},
+    {"id": "A8-codeintel-health", "domain": "audit-scouts", "role": "audit", "allow_shared_read_only": true,
+     "prompt": "Run `codeintel health . --panorama --json` in H:/sotto and report balance_score, hygiene (product_ratio_pct, dirty_total), top monoliths with path:line and line counts, and any ruff findings grouped by rule. Read-only, one run only."},
+
+    {"id": "I1-yt-clock", "domain": "product-core", "role": "implement", "worktree": "I:/cc-tmp/wt-I1-yt-clock",
+     "prompt": "In your worktree of H:/sotto, close any real gap in the YouTube caption clock found by A6: the rule is one owner (youtube_clock.pause_proven) and a measured-moving clock always beats a disagreeing flag. Keep CRLF in app/webview/sotto_webview.py. Run only the touched oracles, then land with git_checkpoint.py wt-land."},
+    {"id": "I2-sidecar", "domain": "product-core", "role": "implement", "worktree": "I:/cc-tmp/wt-I2-sidecar",
+     "prompt": "In your worktree of H:/sotto, verify worker/speaker_sidecar.py's 10 s window default end to end with `python _main/speaker-sidecar-oracle.py`; fix only a genuine failing arm, never lower an arm's bar. Land with wt-land."},
+    {"id": "I3-gate-wiring", "domain": "infra-gates", "role": "implement", "worktree": "I:/cc-tmp/wt-I3-gate",
+     "prompt": "In your worktree of H:/sotto add three step rows to _main/_audit-verify-all.cmd (feature_map_sync --gate, benchmark_history run --gate, loop_friction_audit --gate), each with its red-as-expected twin, preserving CRLF; then re-measure bytes/CRLF/sha256 and report them. Never run the battery. Land with wt-land."},
+    {"id": "B1-twins", "domain": "benchmarks-twins", "role": "benchmark", "allow_shared_read_only": true,
+     "prompt": "In H:/sotto confirm every benchmarks/budgets.json metric has a real measure command that already ran, and report any metric whose command cannot fail (a false green). Read-only report with proof commands."},
+    {"id": "V1-refute", "domain": "adversarial-verify", "role": "review", "allow_shared_read_only": true,
+     "prompt": "Act as an adversary against H:/sotto's claim that the YouTube caption freeze is fixed: read _main/yt-capture-replay-oracle.py and its fixtures, then name every defect class a signed-out replay cannot see. Read-only, no edits."}
+  ]
+}

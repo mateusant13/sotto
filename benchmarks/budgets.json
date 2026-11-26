@@ -1,0 +1,123 @@
+{
+  "schema": "revival.budgets/v1",
+  "regression_tolerance_pct": 10.0,
+  "metrics": [
+    {
+      "id": "e2e.battery_budget_gate_ms",
+      "tier": "e2e",
+      "input_desc": "historico real das corridas da bateria (`_main/battery-budget-baseline.json` + historia)",
+      "output_desc": "o ratchet por passo NAO foi excedido (rc 0) e o solo de 60 s e' impresso",
+      "metric_name": "wall_ms",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "ceiling": 20000.0,
+      "timeout_s": 120.0,
+      "command": "python _main/battery-budget-oracle.py",
+      "parse_mode": "wall_ms",
+      "parse_pattern": "",
+      "owner_paths": [
+        "_main/battery-budget-oracle.py",
+        "_main/battery-budget-baseline.json"
+      ],
+      "blast_radius_callers": [
+        "_main/_audit-verify-all.cmd"
+      ],
+      "red_arm_cmd": "python _main/battery-budget-oracle.py --neg-arm",
+      "note": "Nao corre a bateria (seria recursao): le' o historico e recusa-se quando o ratchet de tempo por passo cai. MEDIDO 2026-11-26: o passo real deu RED com 2391 s totais e VERDE com 1080 s, logo este oraculo sabe ficar vermelho."
+    },
+    {
+      "id": "subsystem.feature_map_gate_ms",
+      "tier": "subsystem",
+      "input_desc": "`feature_map_sync.py --repo . --gate`",
+      "output_desc": "features stay in sync with tracked files and AGENTS.md",
+      "metric_name": "wall_ms",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "ceiling": 15000.0,
+      "timeout_s": 120.0,
+      "command": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py --repo . --gate",
+      "parse_mode": "wall_ms",
+      "parse_pattern": "",
+      "owner_paths": [
+        "features/features.json",
+        "features/INDEX.md",
+        "AGENTS.md"
+      ],
+      "blast_radius_callers": [
+        "_main/_audit-verify-all.cmd"
+      ],
+      "red_arm_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py --repo . --gate --selftest",
+      "note": "Gate real: recusa um mapa desactualizado. MEDIDO 2026-11-26 na primeira sincronizacao: 15 features."
+    },
+    {
+      "id": "subsystem.tooling_intent_ms",
+      "tier": "subsystem",
+      "input_desc": "348 instrumentos em `_main`",
+      "output_desc": "cada ferramenta declara BLOCKS/NO-BUG e o ratchet nao cresce",
+      "metric_name": "wall_ms",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "ceiling": 30000.0,
+      "timeout_s": 240.0,
+      "command": "python _main/tooling-intent-oracle.py",
+      "parse_mode": "wall_ms",
+      "parse_pattern": "",
+      "owner_paths": [
+        "_main/tooling-intent-oracle.py",
+        "_main/tooling-intent-baseline.json"
+      ],
+      "blast_radius_callers": [
+        "_main/_audit-verify-all.cmd"
+      ],
+      "red_arm_cmd": "python _main/tooling-intent-oracle.py --neg-arm",
+      "note": "MEDIDO 2026-11-26: PASS com 202 declaradas e 143 no baseline (ratchet 159)."
+    },
+    {
+      "id": "basic.yt_capture_replay_ms",
+      "tier": "basic",
+      "input_desc": "fixtures de captura do player (3 ficheiros, 1631 amostras)",
+      "output_desc": "43 arms sobre as funcoes PURAS do produto",
+      "metric_name": "wall_ms",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "ceiling": 8000.0,
+      "timeout_s": 120.0,
+      "command": "python _main/yt-capture-replay-oracle.py",
+      "parse_mode": "wall_ms",
+      "parse_pattern": "",
+      "owner_paths": [
+        "_main/yt-snapshot-capture.py",
+        "_main/yt-capture-replay-oracle.py",
+        "app/webview/youtube_clock.py"
+      ],
+      "blast_radius_callers": [
+        "_main/_audit-verify-all.cmd"
+      ],
+      "red_arm_cmd": "python _main/yt-capture-replay-oracle.py --neg-arm",
+      "note": "Offline twin do YouTube: sem rede, sem sessao, sem janela. MEDIDO 1,4-4 s por corrida."
+    },
+    {
+      "id": "e2e.yt_paint_worst_ms",
+      "tier": "e2e",
+      "input_desc": "745 amostras reais do congelamento do dono (0,05 s)",
+      "output_desc": "pior erro de relogio ao pintar cada amostra FORA DO ECRA",
+      "metric_name": "worst_ms",
+      "unit": "ms",
+      "direction": "lower_is_better",
+      "ceiling": 16.667,
+      "timeout_s": 180.0,
+      "command": "python _main/yt-headless-paint-oracle.py",
+      "parse_mode": "regex",
+      "parse_pattern": "WORST TIMING ERROR: ?([0-9.]+) ?ms",
+      "owner_paths": [
+        "app/webview/headless_paint.py",
+        "_main/yt-headless-paint-oracle.py"
+      ],
+      "blast_radius_callers": [
+        "_main/_audit-verify-all.cmd"
+      ],
+      "red_arm_cmd": "python _main/yt-headless-paint-oracle.py --neg-arm",
+      "note": "MEDIDO 2026-11-26: 12,133 ms contra o orcamento de 16,667 ms (60 Hz); bitmaps_disposed=109, janelas abertas=0."
+    }
+  ]
+}

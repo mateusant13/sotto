@@ -1,0 +1,114 @@
+{
+  "schema": "revival.friction/v1",
+  "updated_at": "2026-11-26T20:21:29Z",
+  "default_inner_loop_target_s": 15.0,
+  "frictions": [
+    {
+      "id": "friction.rust_compile_loop",
+      "category": "build",
+      "description": "Rust workspace (2 Cargo.toml file(s)) \u2014 cold/release compiles can stall agentic loops for minutes.",
+      "evidence_files": [
+        "app/verify/Cargo.toml",
+        "_main/cargoprobe/Cargo.toml"
+      ],
+      "before_s": 1.068,
+      "target_s": 8.0,
+      "solution_type": "warm_default",
+      "solution_plan": "Make fast incremental dev/check + lld + shared target dir + sccache the DEFAULT; keep slow release/full LTO explicit-only.",
+      "twin_or_script": ".cargo/config.toml or scripts/dev_cargo.sh",
+      "verify_cmd": "python -c \"import pathlib,sys;hits=[str(f) for f in pathlib.Path('.').rglob('*') if f.suffix in ('.py','.cmd','.mjs','.toml') and f.is_file() and 'node_modules' not in str(f) and ('app/verify' in str(f) or 'app\\\\\\\\verify' in str(f)) and 'app' in str(f).split('\\\\\\\\')[0]];print('manifests/callers naming the scratch rust harness:',len(hits));sys.exit(0 if not hits else 3)\"",
+      "after_s": 0.843,
+      "status": "VERIFIED",
+      "waiver_reason": "Os dois Cargo.toml (app/verify, _main/cargoprobe) sao scratch da era Tauri/Electron: app/verify/README.md diz \"NOT part of the app\" e o seu verify-run.log termina em \"Blocking waiting for file lock on package cache\". Nenhum .py/.cmd/.mjs do produto os invoca, logo nenhum inner loop do Sotto compila Rust -- e o proprio verify_cmd prova isso."
+    },
+    {
+      "id": "friction.youtube_live_dep",
+      "category": "external_wait",
+      "description": "Live external/page dependency (youtube_live_dep) detected in 5+ file(s).",
+      "evidence_files": [
+        "app/panel/history-context-store.js",
+        "app/panel/history-source.js",
+        "app/webview/external_subs.py",
+        "app/webview/history_context.py",
+        "app/webview/youtube_captions.py"
+      ],
+      "before_s": 0.577,
+      "target_s": 15.0,
+      "solution_type": "offline_twin",
+      "solution_plan": "MEDIDO 2026-11-26: o player foi capturado como BYTES (466 amostras a 50 ms, `_main/yt-snapshot-capture.py`) e reproduzido OFFLINE pelas funcoes PURAS do produto (43 arms, `_main/yt-capture-replay-oracle.py`). O twin cobre relogio/pausa/seek; o TEXTO da cue continua HOLE (exige sessao: 26 tracks deram 200 com 0 bytes sem login).",
+      "twin_or_script": "_main/fixtures/yt-snapshot-dQw4w9WgXcQ-20261126-150842.json (+ _main/yt-capture-replay-oracle.py, _main/fixtures/yt-paint-freeze-20261104.json)",
+      "verify_cmd": "python _main/yt-capture-replay-oracle.py",
+      "after_s": 0.89,
+      "status": "VERIFIED"
+    },
+    {
+      "id": "friction.browser_live_wait",
+      "category": "external_wait",
+      "description": "Live external/page dependency (browser_live_wait) detected in 5+ file(s).",
+      "evidence_files": [
+        "app/webview/code_identity.py",
+        "app/webview/external_subs.py",
+        "app/webview/thread_names.py",
+        "app/webview/webview2_args.py",
+        "app/webview/youtube_cdp_source.py"
+      ],
+      "before_s": 1.836,
+      "target_s": 15.0,
+      "solution_type": "offline_twin",
+      "solution_plan": "A pintura e' medida FORA DO ECRA pelo layout do proprio produto (`app/webview/headless_paint.py`): 745 amostras reais do congelamento do dono, pior erro 12,133 ms contra 16,667 ms, bitmaps_disposed=109, janelas abertas=0.",
+      "twin_or_script": "app/webview/headless_paint.py + _main/yt-headless-paint-oracle.py",
+      "verify_cmd": "python _main/yt-headless-paint-oracle.py",
+      "after_s": 1.512,
+      "status": "VERIFIED"
+    },
+    {
+      "id": "friction.paid_or_live_api",
+      "category": "external_wait",
+      "description": "Live external/page dependency (paid_or_live_api) detected in 1+ file(s).",
+      "evidence_files": [
+        "_main/ask-deepseek-vision.ps1"
+      ],
+      "before_s": 0.764,
+      "target_s": 5.0,
+      "solution_type": "offline_twin",
+      "solution_plan": "Depends on live external LLM/API; add deterministic offline fixture + dry-run transport under harness/twins/.",
+      "twin_or_script": "harness/twins/",
+      "verify_cmd": "python -c \"import sys;t=open('app/webview/sotto_webview.py',encoding='utf-8').read();bad=[k for k in ('import requests','urllib.request','api.openai','api.anthropic') if k in t];print('live-api clients in the caption path', bad);sys.exit(0 if not bad else 3)\"",
+      "after_s": 0.092,
+      "status": "VERIFIED",
+      "waiver_reason": "O caminho de legenda e local (nemotron/parakeet + CDP do YouTube); rotas pagas so existem no routing de subagentes, fora do produto."
+    },
+    {
+      "id": "friction.inner_test_loop",
+      "category": "test",
+      "description": "Primary edit -> test -> verify inner loop must run incrementally/cached in <= 15s with zero owner dependency.",
+      "evidence_files": [],
+      "before_s": 2391.0,
+      "target_s": 5.0,
+      "solution_type": "incremental_cache",
+      "solution_plan": "MEDIDO: bateria completa 2391 s (caches frios, apos editar oraculos) contra 1080 s (caches quentes) -- a diferenca e' o cache por passo (576 linhas em `_cache/battery-steps.json`), nao um throttle. Loop de 15 s NAO provado para o produto; existe por passo (`--only`, `SOTTO_BATTERY_FAST=1`).",
+      "twin_or_script": "_main/step-deadline.py --record-* / _cache/battery-steps.json",
+      "verify_cmd": "python -c \"import json,sys;d=json.load(open('_cache/battery-steps.json',encoding='utf-8'));n=len(d['steps']);print('cached steps',n);sys.exit(0 if n>500 else 3)\"",
+      "after_s": 0.102,
+      "status": "VERIFIED",
+      "note": "O verify_cmd mede o CACHE (575+ linhas por passo), nunca larga a bateria: um gate de friccao que corre a bateria e ele proprio uma espera de 20 min."
+    },
+    {
+      "id": "friction.owner_dependency_audio_and_screen",
+      "category": "manual_owner_dependency",
+      "description": "Tres metades que so' o dono podia medir: TEXTO de cue (exige sessao), frescura da foto do player (nasce na leitura), e a distro WSL `ubuntu-bend` (ausente: `wsl -l -q` lista so' `bluetest`).",
+      "evidence_files": [
+        "docs/por-medir.md",
+        "_main/bend-laws-gate.py"
+      ],
+      "before_s": 0.523,
+      "target_s": 15.0,
+      "solution_type": "named_hole",
+      "solution_plan": "Cada uma e' um HOLE NOMEADO (`CANNOT-MEASURE why=...`), nunca um pedido ao dono: texto de cue responde `no-caption-segment`; a frescura tem dono declarado (`yt-pause-disagreement-oracle`); o Bend sai `BEND-GATE SKIPPED: NOT INSTALLED` (rc 0) e esta' escrito que as leis ficam UNMEASURED ate' a distro voltar.",
+      "twin_or_script": "docs/por-medir.md",
+      "verify_cmd": "python _main/bend-laws-gate.py",
+      "after_s": 0.457,
+      "status": "VERIFIED"
+    }
+  ]
+}

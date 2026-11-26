@@ -1184,3 +1184,53 @@ da app; o ledger imprime `FIXED, NOT VERIFIED`.
 `docs/AGENTS-archive-20261021.md` (a história completa, com os números verbatim) ·
 `docs/shell-contract.md` · `docs/model-specs/README.md` · `docs/audit/` · `_main/receipt-*.md`
 (cada correcção traz o seu recibo: instrumento, braço negativo, pin).
+
+<!-- REVIVAL:WORKFLOW:START -->
+## Universal Problem-Handling Workflow (All Models: Small -> Frontier)
+
+Follow this exact decision tree on **every** user message before touching code:
+
+1. **Classify the Request First (pick ONE primary type):**
+   - **Question / Explanation** (*"how does X work?", "why did Y happen?"*) -> Read `features/INDEX.md` first, then jump directly to the named owning `file:line`. Never scan the whole repo blindly.
+   - **Proposal / Design / Trade-off** -> Read `features/INDEX.md` + `benchmarks/budgets.json` + `benchmarks/sliders.json`. State current behavior, target shape, blast radius, and metric impact before writing code.
+   - **Bug / Defect / Regression** -> Check `features/INDEX.md` (inputs/outputs & interlinks) + `harness/angles.tsv` + `codeintel trace` / runtime logs. Reproduce with a failing RED test or offline twin in `harness/twins/` **before** editing.
+   - **Feature / Improvement** -> Check `features/INDEX.md` + `revival/COMMANDS.md` + `benchmarks/budgets.json`. Plan the smallest vertical slice (`<=400` LOC), isolate in a git worktree, wire into real entrypoints (zero unwired ghosts).
+   - **Performance / Slow Loop / Refactor** -> Run `codeintel health` + `codeintel trace` + `benchmarks/budgets.json` + `revival/FRICTION.json`. Measure BEFORE on the real target, optimize, prove AFTER on the same instrument.
+
+2. **Mandatory Fast-Lookup Order (Save Tokens, Prevent Drift):**
+   1. `features/INDEX.md` — macro architecture, inputs, outputs, and feature interlinks.
+   2. `revival/COMMANDS.md` — verified build, fast-test (`<15s`), offline twin, and gate commands.
+   3. `benchmarks/budgets.json` — required metrics & ceilings (basic -> E2E) that MUST NOT regress.
+   4. `harness/angles.tsv` & `harness/twins/` — falsifiers and offline replayable twins.
+   5. `revival/GOAL.json` & `revival/MILESTONES.json` — durable multi-day goal and active wave.
+
+3. **Execution & Landing Contract (Non-Negotiable):**
+   - Never guess runtime behavior from reading code alone; prove with a runnable command + RED/GREEN arm.
+   - Work in an isolated git worktree for non-trivial edits; snapshot with `git_checkpoint.py` before drastic refactors.
+   - Run the project gate (which runs **metric budgets**, **blast-radius checks**, and **`feature_map_sync.py --gate`**) before claiming done.
+   - Never leave `AGENTS.md` or `features/INDEX.md` stale after adding/renaming a macro feature.
+<!-- REVIVAL:WORKFLOW:END -->
+
+<!-- REVIVAL:FEATURES:START -->
+## Macro Feature Map (Gate-Synced — Details in `features/INDEX.md`)
+
+| Feature | Files | Inputs -> Outputs | Interlinks |
+|---|---:|---|---|
+| `_main` | 1327 | Tracked source tree under `_main/`, `app/` and `worker/`, Battery step timings in `_cache/battery-steps.json` and `_main/battery-budget-baseline.json` -> Per-oracle PASS/FAIL verdicts and rc on stdout, Step logs under `_main/_audit-verify/` | app/panel, app/webview, worker |
+| `_recovered` | 2 | Frozen Python snapshots committed during the 2026-10-23 recovery, Diff receipts in `_main/RECOVERY.md` and `_main/INTEGRATION-11.md` -> Reconstructable diff between pre-loss HEAD and recovered worker, No runtime JSONL and no app state | - |
+| `_tools` | 4 | Read-only URI to C:/Users/Administrador/.minimax/v2/sqlite/runtime-state.sqlite, UTC cutoff and MAX timestamps from `_main/CRON-TRUTH.md` -> POPULATION/WINDOW counts and pass-by-pass verdicts on stdout, Cron-silence evidence cited in `_main/CRON-VERDICT.md` | - |
+| `app/_legacy-electron` | 11 | Child-process stdout JSONL (captions and statuses), Renderer IPC messages such as hide, toggle, pointer and getInfo -> Captions and statuses delivered to the panel receiver and main-process caption log, Bridge-selftest rc 0/3 with per-step receipts | _main, app/panel, worker |
+| `app/panel` | 119 | `window.sotto` bridge events and worker caption lines relayed by the shell, Local theme CSS and bundled woff2 fonts -> Painted panel and floated-overlay DOM state, Per-hour history rows on the Python arm and `ctx1=` context tokens | _main, app/_legacy-electron, app/webview |
+| `app/shadowplay` | 49 | Hotkey events and NVENC/ffmpeg encoder settings, Video frames in the replay ring -> IDR-aligned replay clips on disk, Per-suite RESULT lines and a red-arm refusal verdict | - |
+| `app/verify` | 3 | Real `src-tauri/src/geometry.rs` and `memory.rs` sources, rustc tauri and serde stubs in `app/verify/rustc/` -> Unit-test verdicts for dock arithmetic and PSAPI link, Receipt in `app/verify/verify-run.log` | - |
+| `app/webview` | 51 | YouTube player CDP snapshots and UIA caption window, Worker JSONL status and caption lines -> Overlay paint and panel DOM updates, History store rows under `history/<YYYY-MM-DD>/<HH>.md` plus `ctx1=` tokens | _main, app/_legacy-electron, app/panel |
+| `bend_core` | 1 | Claims and model definitions in `LAWS.bend`, Witnesses in `PROOF.bend` and negative example laws -> Lean verdict per law from the Bend gate, Python sample-check output from `model.py --selftest` | tools |
+| `discord` | 4 | DISCORD_BOT_TOKEN plus guild and voice-channel ids, Raw Opus packets tagged by SSRC from @discordjs/voice -> 16 kHz mono PCM segments and packet JSONL under `out/<user_id>/`, Decoder-count and capture receipts | _main, worker |
+| `probe` | 7 | Sounddevice device list and a 2 s capture window, Synthetic WAV for transcription -> JSON evidence for loopback and ASR availability on stdout, Logs such as `probe/tap.log` and `probe/load.log` | - |
+| `root-entrypoints` | 2 | Read-only URI to C:/Users/Administrador/.minimax/v2/sqlite/runtime-state.sqlite, Electron runtime plus `_main/flicker-dom-oracle.js` -> Schema and queue census on stdout, Flicker measurement results | _main, _tools, app/_legacy-electron |
+| `scripts` | 4 | AGENTS.md and installed skill bytes, Worker WORKER_STATS line or a state=done JSON payload -> BATTERY-VERDICT task-resolver-gate PASS/FAIL with rc 0/1/2, AGC RED/GREEN verdict with gain evidence | _main, worker |
+| `tools` | 2 | `bend_core/LAWS.bend` and `PROOF.bend`, Kernel (`lean --version`), translator (`bend version`) and WSL environment -> Per-law verdict on stdout with rc, Append-only proof ledger JSONL rows | bend_core, _main |
+| `worker` | 44 | WASAPI loopback or microphone PCM audio, Engine and config flags from `worker/config.json` -> Flushed caption and status JSONL lines on stdout, WORKER_STATS counters and audio ring state | _main, app/_legacy-electron, app/webview |
+
+Full macro contracts, verify commands, and file ownership live in `features/INDEX.md` and `features/features.json` (enforced on every gate by `feature_map_sync.py --gate`).
+<!-- REVIVAL:FEATURES:END -->

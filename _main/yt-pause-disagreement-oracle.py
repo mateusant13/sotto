@@ -86,6 +86,160 @@ def arm_truth(clock):
     return ok, '; '.join(detail) or '8/8 combinacoes'
 
 
+PAUSE_LITERALS = (
+    ('YOUTUBE_PAUSE_STALE_PHOTO', 'a foto velha NAO apaga o ecra (e o held_s mede a idade da foto)'),
+    ('YOUTUBE_PAUSE_UNWITNESSED', 'a bandeira sozinha congela a interpolacao e diz o nome'),
+    ('YOUTUBE_PAUSE_BLANK_DEFERRED', 'o apagar foi adiado pela dwell, nao decidido'),
+)
+
+# Um leitor POR NOME, nao um comentario: cada familia de pausa conta-se aqui.
+PAUSE_READER = re.compile(r'YOUTUBE_PAUSE_'
+                          r'(DISAGREED|PROVEN|STALE_PHOTO|UNWITNESSED|BLANK_DEFERRED)\b')
+
+
+def read_pause_episodes(lines):
+    """Conta as familias de pausa do log. E' o unico leitor dos tres literais que
+    o shell escrevia para o vazio (medido 2026-11-26: zero referencias em `_main`):
+    um literal que ninguem le' e' uma frase que o produto diz a ninguem."""
+    counts = {}
+    for line in lines:
+        m = PAUSE_READER.search(line)
+        if m:
+            counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+    return counts
+
+
+def arm_literals(shell_src):
+    """c-observabilidade: os tres literais tem de ser ESCRITOS pelo shell e LIDOS
+    por este modulo. Um leitor que so' existe na prosa nao conta: as linhas de
+    prova sao sinteticas e o contador tem de as ver."""
+    sample = [
+        'YOUTUBE_PAUSE_STALE_PHOTO held_s=0.60 age_ms=5891 t=158.00 vid=x',
+        'YOUTUBE_PAUSE_UNWITNESSED paused_flag=True still_s=0.25 need_s=2.00 t=159.00 vid=x',
+        'YOUTUBE_PAUSE_BLANK_DEFERRED held_s=0.10 quiet_s=0.10 dwell_s=0.30 witness=none vid=x',
+        'YOUTUBE_PAUSE_PROVEN witness=flag+clock-static held_s=4.2 t=160.00 vid=x',
+    ]
+    counts = read_pause_episodes(sample)
+    bad = []
+    for name, _why in PAUSE_LITERALS:
+        key = name[len('YOUTUBE_PAUSE_'):]
+        if name not in shell_src:
+            bad.append('%s: o shell nao escreve' % name)
+        if counts.get(key, 0) != 1:
+            bad.append('%s: o leitor contou %d (quer 1)' % (name, counts.get(key, 0)))
+    if counts.get('PROVEN', 0) != 1 or counts.get('DISAGREED', 0) != 0:
+        bad.append('o contador confunde as familias existentes')
+    return (not bad), ('; '.join(bad) if bad
+                       else 'os 3 literais orfaos tem escritor no shell e leitor aqui')
+
+
+def _rewrite_method(shell_src, name, new_body):
+    """Substitui o CORPO de `def <name>(self, ...)` mantendo a assinatura, para
+    que um mutante exercite o metodo REAL e nao uma reescrita deste modulo."""
+    import ast
+    import textwrap
+    tree = ast.parse(shell_src)
+    target = None
+    for cls in ast.walk(tree):
+        if isinstance(cls, ast.ClassDef):
+            for fn in cls.body:
+                if isinstance(fn, ast.FunctionDef) and fn.name == name:
+                    target = fn
+                    break
+        if target is not None:
+            break
+    if target is None:
+        return None
+    seg = ast.get_source_segment(shell_src, target) or ''
+    if not seg:
+        return None
+    args = []
+    a = target.args
+    for arg in list(a.posonlyargs) + list(a.args):
+        args.append(arg.arg)
+    sig_src = 'def %s(%s):' % (name, ', '.join(args))
+    new = textwrap.dedent(sig_src) + '\n' + textwrap.indent(
+        textwrap.dedent(new_body).strip('\n') + '\n', '        ')
+    return shell_src.replace(textwrap.dedent(seg), new, 1)
+
+
+def arm_freshness(shell_src):
+    """d-frescura: a FOTO E' DESTE TICK? O metodo REAL do shell decide, nao uma
+    copia. `_yt_snap_fresh` nao tinha nenhum braco comportamental (medido
+    2026-11-26 por blast-radius: so' havia `rg` de string e espelhos), e e' ele
+    que entrega `photo_fresh` ao `pause_proven` -- a metade "foto velha nao
+    apaga o ecra" que curou o congelamento do dono.
+
+    A idade vem do `stamp` da PROPRIA foto: sem carimbo legivel a resposta e'
+    FALSA (sem medida, a foto nao vale como medida), e uma foto mais velha que
+    `DOM_FRESH_S` tambem. O limite e' lido do shell AQUI, nao escrito aqui.
+    """
+    import ast
+    import textwrap
+    try:
+        tree = ast.parse(shell_src)
+    except SyntaxError as exc:
+        return False, 'o shell nao parseia: %r' % (exc,)
+    node = None
+    for cls in ast.walk(tree):
+        if isinstance(cls, ast.ClassDef):
+            for fn in cls.body:
+                if isinstance(fn, ast.FunctionDef) and fn.name == '_yt_snap_fresh':
+                    node = fn
+                    break
+        if node is not None:
+            break
+    if node is None:
+        return False, 'o shell nao tem `_yt_snap_fresh`'
+    src = textwrap.dedent(ast.get_source_segment(shell_src, node) or '')
+    if not src.strip():
+        return False, 'o metodo existe mas nao tem fonte legivel'
+
+    NOW = 1000.0
+    fresh_limit = None
+    for m in re.finditer(r'^\s*DOM_FRESH_S\s*=\s*([0-9.]+)', shell_src, re.M):
+        fresh_limit = float(m.group(1))
+        break
+    if fresh_limit is None:
+        return False, 'o shell nao declara DOM_FRESH_S'
+
+    ns = {'time': type('T', (), {'monotonic': staticmethod(lambda: NOW)})()}
+    try:
+        exec(compile(src, '<shell:_yt_snap_fresh>', 'exec'), ns)
+    except Exception as exc:
+        return False, 'o metodo nao executa: %r' % (exc,)
+    fn = ns.get('_yt_snap_fresh')
+    if not callable(fn):
+        return False, 'a extracao nao devolveu uma funcao'
+
+    class Host:
+        DOM_FRESH_S = fresh_limit
+
+    host = Host()
+    cases = [
+        ({'stamp': NOW - 0.05}, True, 'foto deste tick: vale'),
+        ({'stamp': NOW - fresh_limit * 0.9}, True, 'foto dentro do limite: vale'),
+        ({'stamp': NOW - fresh_limit - 0.5}, False,
+         'foto mais velha que DOM_FRESH_S: NAO vale (e o defeito de 5,9 s)'),
+        ({}, False, 'sem carimbo: NAO vale -- o desconhecido nao e' + " fresco"),
+        ({'stamp': None}, False, 'carimbo None: NAO vale'),
+        ({'stamp': 'nao-e-numero'}, False, 'carimbo ilegivel: NAO vale'),
+        ({'stamp': NOW + 30.0}, True, 'carimbo do futuro: dentro do limite (relogio unico)'),
+    ]
+    bad = []
+    for snap, want, why in cases:
+        try:
+            got = bool(fn(host, snap))
+        except Exception as exc:
+            bad.append('%s -> excecao %r' % (why, exc))
+            continue
+        if got is not want:
+            bad.append('%s -> %s (quer %s)' % (why, got, want))
+    return (not bad), ('; '.join(bad) if bad
+                       else '%d casos no metodo REAL, limite %.2f s lido do shell'
+                            % (len(cases), fresh_limit))
+
+
 def arm_wiring(shell_src):
     """O shell deriva `_paused_proven` da funcao, e `_now_paused` dela."""
     problems = []
@@ -154,7 +308,33 @@ def neg_arm(clock, shell_src):
             print('NEG-ARM b-ligacao %s' % ('CAUGHT' if not ok2 else 'NOT-CAUGHT'))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    return all(c for _, c in caught) and len(caught) == 3
+    # Um literal apagado do shell tem de derrubar (c), senao o leitor nao le'.
+    ok3, _ = arm_literals(shell_src.replace('YOUTUBE_PAUSE_STALE_PHOTO', 'X'))
+    caught.append(('c-literal-apagado', not ok3))
+    print('NEG-ARM c-literal-apagado %s' % ('CAUGHT' if not ok3 else 'NOT-CAUGHT'))
+    # Um leitor cego (regex que nao casa nada) tambem.
+    global PAUSE_READER
+    saved = PAUSE_READER
+    try:
+        PAUSE_READER = re.compile(r'NEVER-MATCHES-ANYTHING')
+        ok4, _ = arm_literals(shell_src)
+    finally:
+        PAUSE_READER = saved
+    caught.append(('c-leitor-cego', not ok4))
+    print('NEG-ARM c-leitor-cego %s' % ('CAUGHT' if not ok4 else 'NOT-CAUGHT'))
+    # d-frescura: dois mutantes no CORPO REAL do metodo.
+    for label, body in (
+            ('d-foto-velha-aceita', 'return True\n'),
+            ('d-nunca-fresca', 'return False\n')):
+        mutated = _rewrite_method(shell_src, '_yt_snap_fresh', body)
+        if mutated is None:
+            caught.append((label, False))
+            print('NEG-ARM %s NOT-CAUGHT (nao foi possivel mutar)' % label)
+            continue
+        okd, _ = arm_freshness(mutated)
+        caught.append((label, not okd))
+        print('NEG-ARM %s %s' % (label, 'CAUGHT' if not okd else 'NOT-CAUGHT'))
+    return all(c for _, c in caught) and len(caught) == 7
 
 
 def log_verdict(path, since=None):
@@ -213,8 +393,13 @@ def log_verdict(path, since=None):
     if not seen:
         print('YT-PAUSE-LOG CANNOT-MEASURE reason=no-pause-lines lines=%d' % len(lines))
         return 3
+    fam = read_pause_episodes(lines)
     print('YT-PAUSE-LOG episodes=%d contradicted=%d lines=%d'
           % (sum(1 for s in seen if s[1] == 'PROVEN'), len(bad), len(lines)))
+    print('YT-PAUSE-LOG families=' + ' '.join(
+        '%s=%d' % (k, fam[k]) for k in
+        ('PROVEN', 'DISAGREED', 'STALE_PHOTO', 'UNWITNESSED', 'BLANK_DEFERRED')
+        if k in fam))
     for n, t, vid in bad[:10]:
         print('  CONTRADICTED line=%d t=%s vid=%s' % (n + 1, t, vid))
     print('YT-PAUSE-LOG VERDICT: %s%s'
@@ -247,6 +432,12 @@ def main(argv=None):
     b, db = arm_wiring(shell_src)
     print('[%s] b-ligacao   o shell deriva o apagar e a testemunha da regra -- %s'
           % ('PASS' if b else 'FAIL', db))
+    c, dc = arm_literals(shell_src)
+    print('[%s] c-leitor    os 3 literais de pausa tem escritor e leitor -- %s'
+          % ('PASS' if c else 'FAIL', dc))
+    d, dd = arm_freshness(shell_src)
+    print('[%s] d-frescura  o metodo REAL _yt_snap_fresh decide a foto do tick -- %s'
+          % ('PASS' if d else 'FAIL', dd))
 
     if '--neg-arm' in argv:
         ok = neg_arm(clock, shell_src)
@@ -255,8 +446,8 @@ def main(argv=None):
         # Um neg-arm que sai 0 e' indistinguivel de um oraculo que nao julga.
         return 1 if ok else 0
 
-    green = a and b
-    print('YT-PAUSE-DISAGREEMENT VERDICT: %s (2 arms)' % ('GREEN' if green else 'RED'))
+    green = a and b and c and d
+    print('YT-PAUSE-DISAGREEMENT VERDICT: %s (4 arms)' % ('GREEN' if green else 'RED'))
     return 0 if green else 1
 
 

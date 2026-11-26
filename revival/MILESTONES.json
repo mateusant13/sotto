@@ -1,0 +1,68 @@
+{
+  "schema": "revival.milestones/v1",
+  "updated_at": "2026-11-26T20:06:25Z",
+  "mode": "cold-start",
+  "p0_ordered_skills": [
+    {
+      "priority": "P0",
+      "step": 1,
+      "skill": "omp-session-forensics + anti-drift",
+      "task": "Run session forensics on current pane/repo; rotate if >250MB or compaction-looping; enforce product-vs-infra separation."
+    },
+    {
+      "priority": "P0",
+      "step": 2,
+      "skill": "sub-orchestrator-challenge",
+      "task": "Configure 2-tier Domain Sub-Orchestrators (up to 40 self-landing worktree subagents; DeepSeek for audits & DeepSeek+ for impl) \u2014 coordinator NEVER investigates serially."
+    },
+    {
+      "priority": "P0",
+      "step": 3,
+      "skill": "project-revival (bootstrap + git-checkpoint)",
+      "task": "Create revival/, features/, benchmarks/, harness/twins/, take cold-start git checkpoint snapshot, and set durable multi-day anti-self-doubt Goal."
+    },
+    {
+      "priority": "P0",
+      "step": 4,
+      "skill": "feature-map-sync + AGENTS.md workflow",
+      "task": "Run feature_map_sync.py, enrich features/features.json with exact how_it_works/inputs/outputs/interlinks, link --gate into every gate, and sync Universal Workflow into AGENTS.md."
+    },
+    {
+      "priority": "P0",
+      "step": 5,
+      "skill": "design-contradiction-audit + harness-fit + codeintel health/trace",
+      "task": "Dispatch parallel read-only DeepSeek scouts (5-15 single-angle lanes) to expose all contradictions, inert features, runtime failures, harness token waste, and codeintel health/trace hotspots."
+    },
+    {
+      "priority": "P0",
+      "step": 6,
+      "skill": "fast-loop-twin + loop-friction-audit",
+      "task": "Name every slow inner-loop friction (slow compiles, slow test batteries, live YouTube/browser/API waits); build offline recorded twins under harness/twins/ and warm fast-by-default loops (<15s)."
+    },
+    {
+      "priority": "P0",
+      "step": 7,
+      "skill": "metric-load-audit + benchmark-history + system-shape sliders",
+      "task": "Define required metrics & ceilings for every relevant input/output (basic -> subsystem -> E2E) in benchmarks/budgets.json, record full BEFORE baseline in benchmarks/history.jsonl, and score initial 0-100 paired sliders."
+    },
+    {
+      "priority": "P0",
+      "step": 8,
+      "skill": "project-harness + ds-blast-radius + gate-landing",
+      "task": "Seed harness/angles.tsv (24 angles including A3 steady-state decay), wire metric budgets + blast-radius checks + feature_map_sync --gate into every project gate."
+    },
+    {
+      "priority": "P0",
+      "step": 9,
+      "skill": "project-revival (drastic refactor waves)",
+      "task": "Take pre-refactor git checkpoint, dispatch up to 40 isolated worktree self-landing lanes (DeepSeek+) via Domain Sub-Orchestrators to fix every architectural/product/perf defect."
+    },
+    {
+      "priority": "P0",
+      "step": 10,
+      "skill": "benchmark-history (after) + adversarial-falsification + refutation",
+      "task": "Run full AFTER benchmark, publish before-vs-after diff & slider gains in benchmarks/history.jsonl, run adversarial refutation on real user journeys, confirm zero regressions."
+    }
+  ],
+  "waves": []
+}
