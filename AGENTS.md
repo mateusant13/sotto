@@ -1085,6 +1085,31 @@ segundos/contagens -- e depois re-medir qualquer pin deste ficheiro que a mudanc
 fonte longa da regra vive na skill `extreme-optimization-audit` §L12-bis/§L12-ter e no `task-resolver`
 ("Test economy and the carry-forward duty").
 
+## UM BRACO QUE LE UMA LISTA ENTRE DOIS PASSOS DO PRODUTOR NAO E' UM BRACO (medido 2026-11-26)
+
+Medido nesta maquina: `nemotron-preload` deu **10/12** dentro da jaula da bateria e **12/12** sozinho
+minutos depois, na MESMA arvore. Os dois bracos culpados eram `if status_events:` -- um teste de
+VAZIO feito no instante entre o produtor publicar o estado e o produtor decidir o que fazer com ele
+(`app/webview/sotto_webview.py:25962` publica, `:26163-26166` descarta, `:26168` entrega). O braco
+nao media a supressao: media o escalonador.
+
+A lei, e vale para qualquer oraculo que observe um fio produtor:
+
+- **Um braco de vazio so' existe se o vazio for o produto de um BARREIRA**, nunca de uma corrida.
+  Se a lista pode receber um evento depois de o braco olhar, o braco e' um sorteio -- e um sorteio
+  custa uma corrida inteira da bateria (medido: 821 s + 1 080 s).
+- **A forma deterministica e' uma de tres**, e o comentario no codigo diz qual e por que: (a)
+  dreno limitado com tecto declarado e depois juizo sobre o que ficou; (b) juizo por **NOME**
+  contra o conjunto que o produtor pode legitimamente publicar, feito **depois** da ultima linha
+  dele; (c) **projecao PURA** sobre um dicionario local (aqui `caption_status_for`), que nenhum fio
+  pode mudar.
+- **Um braco pode ser APAGADO quando e' estritamente subsumido**, e so' entao: o check de sequencia
+  final conta eventos, logo um vazamento aparece como evento a mais -- e o produto tem UM leitor
+  (`_pump`), o que garante que a linha ja' foi consumida na barreira.
+- **A forma nova prova que sabe ficar vermelha:** mutar a EXPECTATIVA (nao o produto) tem de dar
+  `MISSING` + rc=1. Medido: `10/12` com `['capture-started']` e `11/12` com a projecao invertida,
+  revertidos para `12/12 PASS`; `--neg-arm` `17/17`.
+
 ## POR MEDIR / NAO ATRIBUIdo
 
 O que esta declarado e nao medido (e por isso nao se afirma): **`docs/por-medir.md`**.
