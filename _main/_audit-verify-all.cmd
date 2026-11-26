@@ -1688,6 +1688,29 @@ if exist _main\yt-cdp-retry-oracle.py (
 call :step red-as-expected-yt-cdp-retry 1 "_main\yt-cdp-retry-oracle.py;app\webview\yt_cdp_retry.py;app\webview\sotto_webview.py" "%OUT%\yt-cdp-retry-neg.log" python _main\yt-cdp-retry-oracle.py --neg-arm
 call :expectred red-as-expected-yt-cdp-retry !STEP_RC! "%OUT%\yt-cdp-retry-neg.log" "NEG-ARM VERDICT: PASS"
 ) else ( call :expectred red-as-expected-yt-cdp-retry MISSING "%OUT%\yt-cdp-retry-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `stall-heartbeat` (2026-11-26): o dono, verbatim -- *"subtitles worked for like 2
+REM seconds and then froze"*. A shell ficou muda 112,2 s e 67,1 s e nao havia como saber
+REM se a MAQUINA parou ou se o GIL da shell foi tomado: um fio daqui morre junto com o
+REM processo. Este passo larga o filho de 1 Hz de verdade e exige 4-9 linhas em 5,2 s,
+REM contador a contar, nenhum buraco, e a morte do filho quando o pipe fecha.
+if exist _main\stall-heartbeat-oracle.py (
+ call :step stall-heartbeat 0 "_main\stall-heartbeat-oracle.py;app\webview\stall_heartbeat.py" "%OUT%\stall-heartbeat.log" python _main\stall-heartbeat-oracle.py
+ call :record stall-heartbeat !STEP_RC!
+) else ( call :record stall-heartbeat MISSING )
+if exist _main\stall-heartbeat-oracle.py (
+call :step red-as-expected-stall-heartbeat 1 "_main\stall-heartbeat-oracle.py;app\webview\stall_heartbeat.py" "%OUT%\stall-heartbeat-neg.log" python _main\stall-heartbeat-oracle.py --neg-arm
+call :expectred red-as-expected-stall-heartbeat !STEP_RC! "%OUT%\stall-heartbeat-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-stall-heartbeat MISSING "%OUT%\stall-heartbeat-neg.log" "NEG-ARM VERDICT: PASS" )
+REM `stall-attr` (o leitor): HOST / SHELL-ONLY / HOST-IDLE a partir do log da shell e
+REM do relogio; um ficheiro ausente responde CANNOT-MEASURE, nunca verde.
+if exist _main\stall-attr.py (
+ call :step stall-attr 0 "_main\stall-attr.py;app\webview\stall_heartbeat.py" "%OUT%\stall-attr.log" python _main\stall-attr.py --selftest
+ call :record stall-attr !STEP_RC!
+) else ( call :record stall-attr MISSING )
+if exist _main\stall-attr.py (
+call :step red-as-expected-stall-attr 1 "_main\stall-attr.py;app\webview\stall_heartbeat.py" "%OUT%\stall-attr-neg.log" python _main\stall-attr.py --neg-arm
+call :expectred red-as-expected-stall-attr !STEP_RC! "%OUT%\stall-attr-neg.log" "NEG-ARM VERDICT: PASS"
+) else ( call :expectred red-as-expected-stall-attr MISSING "%OUT%\stall-attr-neg.log" "NEG-ARM VERDICT: PASS" )
 REM `yt-producer-soak` (2026-11-26): 5 MINUTOS SIMULADOS de leitura com um
 REM produtor que publica no proprio relogio (1 s, 3 s e os 8,8 s medidos na
 REM sessao do dono). Julga que CADA publicacao sai uma vez, dentro da janela de

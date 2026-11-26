@@ -597,6 +597,42 @@ testemunhas a discordar no MESMO tick: `YOUTUBE_PAUSE_DISAGREED clock_rate=0.58`
   DEFAULT e' a ultima sessao (`SHELL_STARTUP_STAGE`); `--since 'YYYY-MM-DD HH:MM'` escolhe outra.
   Medido no log historico: 18 episodios contraditos antes do fix, e 1 na sessao dele.
 
+## UM SILENCIO NO LOG TEM DOIS DONOS, E O PRODUTO TEM DE DIZER QUAL (medido 2026-11-26)
+
+Verbatim do dono: *"i just opened sotto, went to youtube, subtitles from youtube worked for like 2
+seconds and then froze, when i unpaused it still did not worked"*. Duas classes de defeito estavam
+empilhadas na mesma queixa, e a segunda nao era da shell:
+
+1. **A shell** — leitura de 16,4 s, lapide no `_yt_cdp_ensure`, laco de 4 Hz a 0,5 Hz. Corrigido em
+   `02793b2` (`yt_read_budget`) e `1d2649dde2` (`yt_cdp_retry`).
+2. **A maquina** — dois silencios de **112,2 s** (05:42:22.751->05:44:14.916) e **67,1 s**
+   (05:44:51.524->05:45:58) a 91,5 % de CPU e 72,3 % de commit. **MEDIDO, e o veredicto e' HOST**: o
+   worker tem relogio proprio e ficheiro proprio, e escreveu `WORKER_COST wall_s=112.9` e os registos
+   `history/audio/gaps.jsonl:258` **111,241 s** e `:261` **100,824 s** dentro dessas MESMAS janelas.
+   Dois processos, dois relogios, uma janela — nao e' o GIL da shell, e uma lane que so' olhasse para
+   o log da shell teria "corrigido" o sitio errado.
+
+**A LEI, e ela vale para qualquer investigacao de congelamento:**
+
+- **Um silencio no log nao e' um veredicto: e' uma pergunta.** Respondem-na **duas** testemunhas de
+  processos diferentes; uma testemunha so' (o log da shell, ou um fio de vigilancia dentro dela) nao
+  distingue "a maquina parou de agendar" de "o GIL deste processo foi tomado".
+- **A terceira testemunha vive fora da shell e morre com ela**: `app/webview/stall_heartbeat.py`,
+  largado pelo passo `heartbeat` (o PRIMEIRO de `CAPTION_PIPELINE_ORDER`) com o stdin como dono —
+  quando a shell morre o pipe fecha, o filho ve' EOF e sai sozinho, sem kill por nome e sem orfao.
+  Escreve 1 Hz em `_main/_cache/stall-heartbeat.log`.
+- **O leitor e' um comando**: `python _main/stall-attr.py --log _main/webview-run.log` responde
+  `HOST` (buraco nos dois), `SHELL-ONLY` (buraco so' na shell — este e' o nosso bug) ou `HOST-IDLE`
+  (a maquina parou, nada estava a ser escrito); sem ficheiro de relogio responde
+  `CANNOT-MEASURE why=no-heartbeat`, **nunca** verde.
+- **Portoes:** `stall-heartbeat` + `red-as-expected-stall-heartbeat` (8 arms, 7 mutantes) e
+  `stall-attr` + `red-as-expected-stall-attr` (4 fixtures de veredicto, 1 mutante que cega a
+  classificacao).
+- **A consequencia que fica escrita:** enquanto o silencio for `HOST`, a cura do lado do produto nao
+  e' "ir mais rapido" — e' **nao depender de cadencia exacta** (a foto velha nao apaga o ecra, o
+  `PLAYER_HOLD_S` segura a linha, o orcamento serve a ultima leitura), que e' o que as regras de
+  2026-11-26 acima ja' fazem.
+
 ## O RUNTIME DE WEBVIEW2: a MAIOR instalada, e nenhum pin (ordem do dono, 2026-11-11)
 
 Verbatim: *"WEBVIEW2 RUNTIME ORDER FROM THE OWNER (2026-11-11): use the GREATER version. This is a
@@ -828,8 +864,8 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **442818 B**,
-  **5048 CRLF** / 0 bare LF, sha256 `1E0EF50AB2AA50634D6932795D4276BC0A3A292E143B0851AB1E714EA4BA50C5`.
+- **PIN do ficheiro (re-medido 2026-11-26):** `_main\_audit-verify-all.cmd` = **444845 B**,
+  **5071 CRLF** / 0 bare LF, sha256 `AE7BD37FF6274F366FDFD42559E2B14D70CD6B412F52D97B0D5BB56F3BFC8873`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e

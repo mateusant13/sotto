@@ -19191,6 +19191,52 @@ class SottoShell:
                 % (why, youtube_cdp_source.RETRY_S))
         return source
 
+    STALL_HEARTBEAT_LOG = os.path.join(REPO_ROOT, '_main', '_cache',
+                                       'stall-heartbeat.log')
+
+    def _start_stall_heartbeat(self):
+        """A THIRD WITNESS, IN ITS OWN PROCESS (2026-11-26, MEDIDO).
+
+        O dono: *"subtitles worked for like 2 seconds and then froze"*. A shell
+        ficou muda 112,2 s e 67,1 s na sessao dele, e nao havia como saber se a
+        maquina parou ou se o GIL desta shell foi tomado: um fio daqui para
+        junto com o resto. O `stall_heartbeat.py` escreve 1 Hz no proprio
+        ficheiro, de um processo separado; `_main/stall-attr.py` compara os dois
+        e responde HOST / SHELL-ONLY / HOST-IDLE.
+
+        O dono do processo e' o STDIN: quando esta shell morre o pipe fecha, o
+        filho ve' EOF e sai sozinho. Nao ha kill por nome e nao sobra orfao.
+        Qualquer falha aqui e' ANOTADA e nunca impede o pipeline: um relogio de
+        diagnostico nao e' pre-condicao de legenda.
+        """
+        if getattr(self, '_stall_hb_child', None) is not None:
+            return self._stall_hb_child
+        try:
+            from no_console import popen_kwargs
+            mod = os.path.join(HERE, 'stall_heartbeat.py')
+            if not os.path.exists(mod):
+                log('STALL_HEARTBEAT skipped=no-module')
+                return None
+            d = os.path.dirname(self.STALL_HEARTBEAT_LOG)
+            try:
+                os.makedirs(d, exist_ok=True)
+            except OSError:
+                pass
+            child = subprocess.Popen(
+                [sys.executable, '-u', mod, '--path', self.STALL_HEARTBEAT_LOG],
+                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                # 0x00004000 = BELOW_NORMAL_PRIORITY_CLASS: um relogio de
+                # diagnostico nunca disputa com o desktop.
+                **popen_kwargs(0x00004000 if os.name == 'nt' else 0))
+            self._stall_hb_child = child
+            log('STALL_HEARTBEAT pid=%d path=%s' % (child.pid,
+                                                    self.STALL_HEARTBEAT_LOG))
+            return child
+        except Exception as exc:              # noqa: BLE001
+            log('STALL_HEARTBEAT_FAILED error=%r' % (exc,))
+            return None
+
     def start_caption_pipeline(self, reason):
         """LEGENDA E WORKER NAO ESPERAM PELO WEBVIEW2 (2026-11-03).
 
@@ -19256,7 +19302,16 @@ class SottoShell:
             threading.Thread(target=self._yt_cdp_boot_attach,
                              name='sotto-cdp-boot', daemon=True).start()
 
+        # O RELOGIO DA MAQUINA ARRANCA ANTES DE TUDO (2026-11-26). Ele e' o
+        # unico jeito de distinguir "a maquina parou de agendar" de "o GIL
+        # desta shell parou" -- um fio daqui morre junto com o processo e nao
+        # responde nada. Custa um processo de 1 Hz e o ficheiro dele e' o que
+        # `_main/stall-attr.py` le.
+        def _hb_step():
+            self._start_stall_heartbeat()
+
         steps = (
+            ('heartbeat', _hb_step),
             ('cdp', _cdp_step),
             ('watcher', lambda: self.start_external_caption_watcher()),
             ('worker', lambda: self.start_worker(
