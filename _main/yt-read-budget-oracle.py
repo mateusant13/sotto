@@ -145,7 +145,31 @@ def arms(mod):
     # A11 -- the slow episode is logged with its own name
     arm('a11-episode-is-named', 'YOUTUBE_UIA_SLOW_BUDGET' in src and 'log(_event)' in shell,
         'ok')
+    # A13 -- the WHOLES read is budgeted, not only the UIA branch. The owner's
+    # 15906 ms sat in a phase the branch never reached (`why=` stayed
+    # `cdp-stale`, zero UIA_SLOW_BUDGET lines), so a slow read outside it bought
+    # nothing and the next tick paid again.
+    ok13, why13 = whole_read_arms()
+    arm('a13-whole-read-arms-the-hold', ok13, why13)
     return out
+
+
+def whole_read_arms(text=None):
+    """A slow WHOLE read arms the hold even when the UIA branch never ran."""
+    shell = SHELL
+    if text is None:
+        with open(shell, 'r', encoding='utf-8', errors='replace', newline='') as fh:
+            text = fh.read()
+    i = text.find('_slow = _ms > READ_SLOW_MS')
+    if i < 0:
+        return False, 'the read pacing block is gone'
+    block = text[i:i + 1400]
+    armed = ('yt_read_budget.decide(' in block
+             and "'_yt_uia_blocked_until'" in block
+             and 'log(_ev)' in block)
+    parts = block.split('yt_read_budget.decide(', 1)
+    uses_total = len(parts) == 2 and '_ms,' in parts[1][:120]
+    return armed and uses_total, 'armed=%s uses_total_ms=%s' % (armed, uses_total)
 
 
 def run(mod=None, label='live'):
@@ -156,6 +180,23 @@ def run(mod=None, label='live'):
         print('  %-34s %s  %s' % (name, 'ok' if ok else 'FAIL', detail))
     print('ARM-SUMMARY %s arms=%d ok=%d fail=%d' % (label, len(rows), len(rows) - len(bad), len(bad)))
     return rows, bad
+
+
+#: Mutantes do TEXTO da shell (o a13 le a shell).
+SHELL_MUTANTS = [
+    ('whole-read-not-budgeted',
+     "                if _ms > yt_read_budget.UIA_BUDGET_MS:\r\n"
+     "                    _serve, _until, _ev = yt_read_budget.decide(\r\n"
+     "                        _ms, getattr(self, '_yt_uia_blocked_until', 0.0),\r\n"
+     "                        time.monotonic())\r\n"
+     "                    if _ev:\r\n"
+     "                        self._yt_uia_blocked_until = _until\r\n"
+     "                        log(_ev)\r\n",
+     ""),
+    ('whole-read-uses-a-constant',
+     "                        _ms, getattr(self, '_yt_uia_blocked_until', 0.0),",
+     "                        1.0, getattr(self, '_yt_uia_blocked_until', 0.0),"),
+]
 
 
 MUTANTS = [
@@ -221,6 +262,18 @@ def neg_arm():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
+    for name, old, new in SHELL_MUTANTS:
+        total += 1
+        with open(SHELL, 'r', encoding='utf-8', errors='replace', newline='') as fh:
+            live = fh.read()
+        if old not in live:
+            print('  %-34s MUTANT-BROKEN (anchor missing)' % name)
+            continue
+        ok, _why = whole_read_arms(live.replace(old, new, 1))
+        if ok:
+            print('  %-34s SURVIVED -- the gate is blind here' % name)
+        else:
+            caught += 1
     print('NEG-ARM %d/%d CAUGHT' % (caught, total))
     # The battery's matcher reads this exact token: the negative arm passed
     # means every mutant was caught (rc 1 on that run is the house convention).

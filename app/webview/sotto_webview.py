@@ -4556,6 +4556,21 @@ class ExternalCaptionWatcher(threading.Thread):
                 # desce durante `READ_SLOW_HOLD_S` e volta sozinho: uma leitura
                 # barata a seguir nao precisa de segunda condicao.
                 _slow = _ms > READ_SLOW_MS
+                # A LEITURA INTEIRA TAMBEM ORCA O SEU CUSTO (2026-11-26,
+                # MEDIDO). O `phases={'painted': 15906.0}` da sessao do dono
+                # NAO passou pelo ramo que arma o `yt_read_budget` (`why=`
+                # ficou `cdp-stale` e nunca houve `UIA_SLOW_BUDGET`), logo uma
+                # leitura cara fora desse ramo nao comprava nada: o tick
+                # seguinte pagava outra vez. Agora quem paga 16 s -- por
+                # qualquer motivo -- faz o laco servir as palavras que ja'
+                # tinha enquanto a espera dura.
+                if _ms > yt_read_budget.UIA_BUDGET_MS:
+                    _serve, _until, _ev = yt_read_budget.decide(
+                        _ms, getattr(self, '_yt_uia_blocked_until', 0.0),
+                        time.monotonic())
+                    if _ev:
+                        self._yt_uia_blocked_until = _until
+                        log(_ev)
                 if _slow:
                     self._read_slow_until = time.monotonic() + READ_SLOW_HOLD_S
                 if _slow != getattr(self, '_read_slow_logged', None):
