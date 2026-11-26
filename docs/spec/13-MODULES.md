@@ -186,6 +186,24 @@ FRACA -- e' a classe de erro que o `10-DEFECTS.md` §D-10 pagou caro para aprend
 - **Quando falha** — Não tem ramo de erro. Em `os.name != 'nt'`, `startupinfo()` devolve `None` e `popen_kwargs()` devolve apenas `{'creationflags': flags}`; em Windows devolve também `'startupinfo'` (`[CODE] app/webview/no_console.py:58`). O consumidor (`_main/console-window-audit.py`, citado no cabeçalho) é quem recusa um spawn com `creationflags` sem este par.
 - **Evidência** — `[CODE] app/webview/no_console.py:39` (`CREATE_NO_WINDOW = 0x08000000`); `[CODE] app/webview/no_console.py:44` (ramo não-Windows); `[CODE] app/webview/no_console.py:56` (OR dos flags).
 
+## `app/webview/headless_paint.py` — a legenda desenhada FORA DO ECRÃ
+
+- **O que faz** — Rasteriza cada instante declarado de uma linha do tempo de cues através do
+  **layout do próprio produto** (`_PlayerCue.frame` → `_clamp_rows` → `rows_text` → `_layout` →
+  `_premultiplied_bitmap`) e lê os pixels por `LockBits`, para que a metade dos PIXÉIS da legenda
+  seja julgável sem abrir janela e sem o ecrã do dono `[CODE] app/webview/headless_paint.py:1`.
+  Existe porque "a legenda não pintou" era um julgamento sobre um log, nunca sobre uma imagem.
+- **Quem o chama** — `_main/yt-headless-paint-oracle.py` (o portão). Nenhum caminho de produção o
+  importa: é instrumento, e por isso não é `heavy` (o passo imprime `windows_opened=0`).
+- **O que escreve/lê** — Nada persistente. Devolve, por instante, a contagem de tinta, a largura de
+  tinta e o raster; o oráculo compara as três. Os bitmaps são `Dispose()`-ados no fim
+  (`bitmaps_disposed=109` medido 2026-11-26).
+- **Quando falha** — Sem GDI+ não desenha e o oráculo diz `CANNOT-MEASURE`; nunca devolve tinta
+  inventada. Uma linha vazia devolve zero tinta **por construção** — o braço existe precisamente
+  para provar que essa asserção sabe ficar vermelha.
+- **Evidência** — `[CODE] app/webview/headless_paint.py:1`; portão `_main/yt-headless-paint-oracle.py`
+  (6 braços, `--neg-arm` 5/5, pior erro de tempo **12,133 ms** contra o orçamento de 16,667 ms).
+
 ## `app/webview/overlay_paint.py` (1 126 linhas — a metade pura da pintura)
 
 - **O que faz** — Toda a aritmética da legenda nativa que se pode medir **sem abrir janela**: medir texto, escolher a fonte, calcular o layout dentro do orçamento de largura, compor o bitmap pré-multiplicado e a **cache de tinta** (a chave guarda o raster, e um hit custa 0,063 ms contra 6,55 ms a reconstruir o texto inteiro) `[CODE] app/webview/overlay_paint.py:1`. Existe por causa do ratchet: `caption_overlay.py` cresceu para 1 337 linhas e uma função de 146, e a cura que o próprio ratchet nomeia é extrair sem tocar no comportamento `[CODE] app/webview/overlay_paint.py:692`.

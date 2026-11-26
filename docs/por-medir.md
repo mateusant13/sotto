@@ -138,3 +138,14 @@
   Os cookies de consentimento não levantam isso, e nem `--headless=new` nem janela fora do ecrã mudam
   nada — é política de sessão do YouTube. `CANNOT-MEASURE reason=youtube-login-required`; a via
   livre de dono é um login descartável dentro do perfil da lane, e o perfil dele nunca é a resposta.
+
+## Captura e replay do player — o que a medicao de 2026-11-26 deixou em aberto
+
+- **CUE TEXT sem sessao: `UNMEASURED` por impossibilidade medida.** 3 videos, 26 faixas, todas
+  `200` com 0 bytes num perfil de lane sem login. Uma lane com cookie jar (`--cookies`, Netscape ou
+  JSON) fecha; sem ele o braco (g) do `yt-capture-replay-oracle.py` responde
+  `CANNOT-MEASURE why=no-caption-segment`.
+- **Frescura da foto no replay: HOLE declarado** (o `stamp` nasce na leitura, logo uma linha do
+  tempo nao distingue foto velha de leitura nova). Dono: `_main/yt-pause-disagreement-oracle.py`.
+- **A pausa/seek na instalacao do dono**: `fixed, NOT verified` — os pids 53752/73436 correm codigo
+  anterior aos commits de 2026-11-26.
