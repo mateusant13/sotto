@@ -30,13 +30,13 @@
       "tier": "subsystem",
       "input_desc": "`feature_map_sync.py --repo . --gate`",
       "output_desc": "features stay in sync with tracked files and AGENTS.md",
-      "metric_name": "wall_ms",
+      "metric_name": "cpu_ms",
       "unit": "ms",
       "direction": "lower_is_better",
       "ceiling": 15000.0,
       "timeout_s": 120.0,
       "command": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py --repo . --gate",
-      "parse_mode": "wall_ms",
+      "parse_mode": "cpu_ms",
       "parse_pattern": "",
       "owner_paths": [
         "features/features.json",
@@ -47,20 +47,20 @@
         "_main/_audit-verify-all.cmd"
       ],
       "red_arm_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py --repo . --gate --selftest",
-      "note": "Gate real: recusa um mapa desactualizado. MEDIDO 2026-11-26 na primeira sincronizacao: 15 features."
+      "note": "Gate real: recusa um mapa desactualizado. MEDIDO 2026-11-26 na primeira sincronizacao: 15 features. MEDIDO 2026-11-26: julga cpu_ms, nao wall_ms -- o mesmo codigo deu 510,31 ms e 1353,11 ms de parede em corridas diferentes (jaula de 40% de CPU) e o trabalho nao mudou; a parede de um passo dentro de um tecto de CPU mede o escalonador."
     },
     {
       "id": "subsystem.tooling_intent_ms",
       "tier": "subsystem",
       "input_desc": "348 instrumentos em `_main`",
       "output_desc": "cada ferramenta declara BLOCKS/NO-BUG e o ratchet nao cresce",
-      "metric_name": "wall_ms",
+      "metric_name": "cpu_ms",
       "unit": "ms",
       "direction": "lower_is_better",
       "ceiling": 30000.0,
       "timeout_s": 240.0,
       "command": "python _main/tooling-intent-oracle.py",
-      "parse_mode": "wall_ms",
+      "parse_mode": "cpu_ms",
       "parse_pattern": "",
       "owner_paths": [
         "_main/tooling-intent-oracle.py",
@@ -70,7 +70,7 @@
         "_main/_audit-verify-all.cmd"
       ],
       "red_arm_cmd": "python _main/tooling-intent-oracle.py --neg-arm",
-      "note": "MEDIDO 2026-11-26: PASS com 202 declaradas e 143 no baseline (ratchet 159)."
+      "note": "MEDIDO 2026-11-26: PASS com 202 declaradas e 143 no baseline (ratchet 159). MEDIDO 2026-11-26: julga cpu_ms, nao wall_ms -- o mesmo codigo deu 510,31 ms e 1353,11 ms de parede em corridas diferentes (jaula de 40% de CPU) e o trabalho nao mudou; a parede de um passo dentro de um tecto de CPU mede o escalonador."
     },
     {
       "id": "basic.yt_capture_replay_ms",

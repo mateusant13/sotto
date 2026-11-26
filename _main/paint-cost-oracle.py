@@ -80,6 +80,9 @@ import overlay_paint as op  # noqa: E402
 #: O tecto declarado do passo. Medido 2026-11-08 nesta caixa: 7,1 ms de p50 numa
 #: caixa de 576x156 (escala 1.0) e 11,6 ms de p95 na caixa real de 1040x240.
 HIT_P95_MAX_MS = 2.0
+#: Um hit tem de ser >= 20x mais barato que um raster novo, medido na MESMA
+#: corrida. E' o limite que sobrevive a um tecto de CPU (ver _time_calls).
+HIT_RATIO_MIN = 20.0
 FULL_SWEEP_BASES = 12
 STRIDE = 15          # 18 valores de alfa nas bases fora da varredura cheia
 
@@ -323,6 +326,24 @@ def _cost_base():
 
 
 def _time_calls(fn, n):
+    """Custo por chamada em ms de PAREDE -- e por que a arm A2 julga o RATIO.
+
+    MEDIDO 2026-11-26, duas vezes, e as duas ensinam:
+
+    * `perf_counter` standalone: hit p95 = 0,143 ms. Dentro da jaula de 40% de CPU
+      (`--cpu 40 --io very-low`, corrida #10): 15,164 ms -- 106x, o MESMO codigo e
+      o mesmo raster. Um limite absoluto de parede dentro de um tecto de CPU mede
+      o escalonador, e a casa ja' tem a lei escrita para isso.
+    * `process_time` (a cura obvia): granularidade de ~15,6 ms no Windows aqui,
+      logo as amostras leem 0,000 ms e o braco deixa de poder falhar -- um verde
+      falso, o pior tipo de portao.
+
+    A forma que serve aos dois mundos e' o RATIO: um hit tem de ser >= 20x mais
+    barato do que um miss (um raster novo) medido NA MESMA corrida, porque o tecto
+    de CPU estica os dois igualmente. Isso apanha o mutante que desliga o cache
+    (hit == miss) dentro E fora da jaula. O limite absoluto de 2,0 ms continua a
+    ser julgado quando a corrida NAO esta' capada.
+    """
     out = []
     for _ in range(n):
         t0 = time.perf_counter()
@@ -362,14 +383,26 @@ def _arm_a2(new_mod, head_mod, n=200):
     _time_calls(once(new_mod), 1)
     hits, hit_p50, hit_p95, hit_max = _time_calls(once(new_mod), n)
     stats = new_mod._paint_cache_stats()
+    miss_p50 = statistics.median(miss[0])
+    ratio = (miss_p50 / hit_p95) if hit_p95 > 0 else float('inf')
+    caged = os.environ.get('SOTTO_BATTERY_CAGED') == '1'
     facts = ('caixa=%dx%d hit_ms p50=%.3f p95=%.3f max=%.3f (%d iteracoes) | '
-             'miss_ms p50=%.2f p95=%.2f (nao e portao) | HEAD_ms p50=%.2f | '
-             'stats=%r'
+             'miss_ms p50=%.2f p95=%.2f | RATIO miss/hit=%.1fx (portao >=%.0fx) | '
+             'HEAD_ms p50=%.2f | stats=%r'
              % (w, h, hit_p50, hit_p95, hit_max, n,
-                statistics.median(miss[0]), miss[2],
+                miss_p50, miss[2], ratio, HIT_RATIO_MIN,
                 statistics.median(before[0]), stats))
     problems = []
-    if hit_p95 > HIT_P95_MAX_MS:
+    if ratio < HIT_RATIO_MIN:
+        problems.append('RATIO miss/hit=%.1fx < %.0fx: o hit custa quase o mesmo '
+                        'que um raster novo (cache desligado?)'
+                        % (ratio, HIT_RATIO_MIN))
+    if hit_p95 > HIT_P95_MAX_MS and caged:
+        # Recusa NOMEADA, nunca um verde: dentro do tecto de CPU o numero e' do
+        # escalonador. O RATIO acima continua a ser julgado nesta mesma corrida.
+        say('A2 CANNOT-MEASURE why=caged-cpu-cap hit_p95=%.3f ms bar=%.1f ms '
+            '(SOTTO_BATTERY_CAGED=1)' % (hit_p95, HIT_P95_MAX_MS))
+    elif hit_p95 > HIT_P95_MAX_MS:
         problems.append('hit p95=%.3f ms > %.1f ms' % (hit_p95, HIT_P95_MAX_MS))
     if stats['hits'] < n:
         problems.append('hits=%d < %d iteracoes: nem todas bateram no cache'

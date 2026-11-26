@@ -433,16 +433,56 @@ def selftest():
         except (OSError, ValueError):
             return 0
 
+    def read_own_class():
+        """`GetPriorityClass(GetCurrentProcess())` -- a classe que este selftest
+        publica, com as MESMAS marcas tipadas do probe (sem `restype` o
+        pseudo-handle -1 volta como 0)."""
+        import ctypes
+        k = ctypes.WinDLL('kernel32')
+        k.GetCurrentProcess.restype = ctypes.c_void_p
+        k.GetPriorityClass.argtypes = [ctypes.c_void_p]
+        k.GetPriorityClass.restype = ctypes.c_uint32
+        return int(k.GetPriorityClass(k.GetCurrentProcess()))
+
+    #: RANK das classes do Windows (as que este modulo usa). Sem ordem, comparar
+    #: 0x20 com 0x4000 e' comparar dois bitmasks, nao duas prioridades.
+    _RANK = {0x40: 0, 0x4000: 1, 0x20: 2, 0x8000: 3, 0x100: 4, 0x80: 5}
+
+    def _rank(cls):
+        return _RANK.get(cls, -1)
+
+    # A COMPARACAO E' RELATIVA AO PAI, NUNCA ABSOLUTA (medido 2026-11-26).
+    # Dentro da jaula da bateria o PAI ja' corre em BELOW_NORMAL (Job Object do
+    # `watcher run`), e o Windows nao deixa um filho SUBIR acima do pai: com a
+    # regra absoluta (`got_timing != BELOW_NORMAL`) o A9 dava FAIL numa corrida
+    # caged e PASS standalone, na MESMA arvore -- o braco media o ambiente, nao
+    # o lancador. O que este modulo CONTROLA e' a DIFERENCA que ele acrescenta.
+    parent_class = read_own_class()
+    print('A8/A9 classe do PAI (este processo): 0x%X' % parent_class)
+
     got_common = read_class('nemotron-preload')
-    a8 = got_common == BELOW_NORMAL
-    print('A8 passo comum lido do FILHO: 0x%X (quer 0x%X) -> %s'
-          % (got_common, BELOW_NORMAL, 'PASS' if a8 else 'FAIL'))
-    ok &= a8
+    # Um passo comum tem de ficar ESTRITAMENTE abaixo do pai -- quando o pai
+    # esta' em NORMAL. Com o pai JA' rebaixado (a jaula) o Windows nao deixa
+    # descer mais: o braco vira uma recusa NOMEADA, nunca um verde silencioso
+    # (medido 2026-11-26: com a regra frouxa `child <= parent`, o mutante que
+    # NUNCA rebaixa dava `A8 PASS`, porque a ausencia do rebaixamento era
+    # indistinguivel da classe herdada).
+    if _rank(parent_class) == _rank(0x20):
+        a8 = _rank(got_common) < _rank(parent_class) and _rank(got_common) >= 0
+        print('A8 passo comum lido do FILHO: 0x%X (pai 0x%X NORMAL, filtro 0x%X) -> %s'
+              % (got_common, parent_class, BELOW_NORMAL, 'PASS' if a8 else 'FAIL'))
+        ok &= a8
+    else:
+        print('A8 CANNOT-MEASURE why=parent-already-demoted parent=0x%X child=0x%X '
+              '(a jaula ja\' desceu o pai: o rebaixamento deste lancador nao e\' '
+              'observavel aqui)' % (parent_class, got_common))
 
     got_timing = read_class('paint-cost')
-    a9 = got_timing != BELOW_NORMAL and got_timing != 0
-    print('A9 passo de MEDICAO nao e\' descarregado: 0x%X -> %s'
-          % (got_timing, 'PASS' if a9 else 'FAIL'))
+    # Um passo de MEDICAO nao pode levar NENHUM rebaixamento que este lancador
+    # acrescente: a classe do filho tem de ser a do pai.
+    a9 = got_timing == parent_class and got_timing != 0
+    print('A9 passo de MEDICAO sem rebaixamento novo: 0x%X (pai 0x%X) -> %s'
+          % (got_timing, parent_class, 'PASS' if a9 else 'FAIL'))
     ok &= a9
 
     print('STEP-DEADLINE SELFTEST: %s (9 arms)' % ('PASS' if ok else 'FAIL'))
