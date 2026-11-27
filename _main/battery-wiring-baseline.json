@@ -134,22 +134,12 @@
       "date": "2026-10-25"
     },
     {
-      "file": "device-ladder-doc-oracle.py",
-      "reason": "REASON-MISSING preencher a mao",
-      "date": "2026-10-25"
-    },
-    {
       "file": "device-ladder-rescan-oracle.py",
       "reason": "REASON-MISSING preencher a mao",
       "date": "2026-10-25"
     },
     {
       "file": "emit-queue-bound-oracle.py",
-      "reason": "REASON-MISSING preencher a mao",
-      "date": "2026-10-25"
-    },
-    {
-      "file": "focus-and-flash-gate.py",
       "reason": "REASON-MISSING preencher a mao",
       "date": "2026-10-25"
     },
@@ -214,11 +204,6 @@
       "date": "2026-10-25"
     },
     {
-      "file": "panel-chrome-marks-oracle.py",
-      "reason": "REASON-MISSING preencher a mao",
-      "date": "2026-10-25"
-    },
-    {
       "file": "panel-flash-numbers-reconciliation-oracle.py",
       "reason": "REASON-MISSING preencher a mao",
       "date": "2026-10-25"
@@ -255,11 +240,6 @@
     },
     {
       "file": "ram_gate.py",
-      "reason": "REASON-MISSING preencher a mao",
-      "date": "2026-10-25"
-    },
-    {
-      "file": "ready-stream-blindness-oracle.py",
       "reason": "REASON-MISSING preencher a mao",
       "date": "2026-10-25"
     },
@@ -429,11 +409,6 @@
       "date": "2026-10-25"
     },
     {
-      "file": "wake-tick-gate.py",
-      "reason": "REASON-MISSING preencher a mao",
-      "date": "2026-10-25"
-    },
-    {
       "file": "wasapi-buffer-fallback-oracle.py",
       "reason": "REASON-MISSING preencher a mao",
       "date": "2026-10-25"
@@ -455,16 +430,6 @@
     },
     {
       "file": "wordmark-metrics-oracle.py",
-      "reason": "REASON-MISSING preencher a mao",
-      "date": "2026-10-25"
-    },
-    {
-      "file": "worker-busy-loop-oracle.py",
-      "reason": "REASON-MISSING preencher a mao",
-      "date": "2026-10-25"
-    },
-    {
-      "file": "worker-eof-contract-oracle.py",
       "reason": "REASON-MISSING preencher a mao",
       "date": "2026-10-25"
     },

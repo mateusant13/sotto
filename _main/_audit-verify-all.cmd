@@ -1620,6 +1620,56 @@ if exist scripts\revival_gate.py (
 call :step red-as-expected-revival-gate 1 "scripts\revival_gate.py;harness\angles.tsv;harness\features-functional.json;harness\angulos.tsv;features\features.json;benchmarks\budgets.json;revival\GOAL.json" "%OUT%\revival-gate-neg.log" python scripts\revival_gate.py --neg-arm
 call :expectred red-as-expected-revival-gate !STEP_RC! "%OUT%\revival-gate-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-revival-gate MISSING "%OUT%\revival-gate-neg.log" "NEG-ARM: PASS" )
+REM ===== WIRE 2026-11-27: os cinco oraculos que existiam e nao tinham passo =====
+REM Medido por `_main/battery-wiring-oracle.py`: 98 oraculos com ficheiro e nenhum `call :step`.
+REM Este bloco liga os cinco de contrato comprovado (pos/neg medidos no mesmo turno). Quatro deles
+REM tem `--neg-arm` VERDE quando apanha o mutante (rc=0) -- a forma de `panel-chrome-neg` --, logo
+REM `:expectred` ali REJEITARIA uma corrida correta; so `panel-chrome-marks` fecha rc=1 + marcador.
+REM `panel-chrome-marks`: seis afirmacoes byte-a-byte do dono deixam de ser prosa.
+if exist _main\panel-chrome-marks-oracle.py (
+call :step panel-chrome-marks 0 "_main\panel-chrome-marks-oracle.py;_main\aceitacao-dono.md;app\panel\panel.html;app\panel\panel.css" "%OUT%\panel-chrome-marks.log" python _main\panel-chrome-marks-oracle.py
+call :record panel-chrome-marks !STEP_RC!
+) else ( call :record panel-chrome-marks MISSING )
+if exist _main\panel-chrome-marks-oracle.py (
+call :step red-as-expected-panel-chrome-marks 1 "_main\panel-chrome-marks-oracle.py;_main\aceitacao-dono.md;app\panel\panel.html;app\panel\panel.css" "%OUT%\panel-chrome-marks-neg.log" python _main\panel-chrome-marks-oracle.py --neg-arm
+call :expectred red-as-expected-panel-chrome-marks !STEP_RC! "%OUT%\panel-chrome-marks-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-panel-chrome-marks MISSING "%OUT%\panel-chrome-marks-neg.log" "NEG-ARM: PASS" )
+REM `worker-eof-contract`: o topo do worker nao pode deixar o JSONL aberto.
+if exist _main\worker-eof-contract-oracle.py (
+call :step worker-eof-contract 0 "_main\worker-eof-contract-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\worker-eof-contract.log" python _main\worker-eof-contract-oracle.py
+call :record worker-eof-contract !STEP_RC!
+) else ( call :record worker-eof-contract MISSING )
+if exist _main\worker-eof-contract-oracle.py (
+call :step worker-eof-contract-neg 0 "_main\worker-eof-contract-oracle.py;worker\sotto_worker.py" "%OUT%\worker-eof-contract-neg.log" python _main\worker-eof-contract-oracle.py --neg-arm
+call :record worker-eof-contract-neg !STEP_RC!
+) else ( call :record worker-eof-contract-neg MISSING )
+REM `ready-stream-blindness`: o ready vai para --log/ready-file, nao para o PTY.
+if exist _main\ready-stream-blindness-oracle.py (
+call :step ready-stream-blindness 0 "_main\ready-stream-blindness-oracle.py;app\webview\sotto_webview.py;app\webview\run.cmd;docs\audit\launch-entry.md" "%OUT%\ready-stream-blindness.log" python _main\ready-stream-blindness-oracle.py
+call :record ready-stream-blindness !STEP_RC!
+) else ( call :record ready-stream-blindness MISSING )
+if exist _main\ready-stream-blindness-oracle.py (
+call :step ready-stream-blindness-neg 0 "_main\ready-stream-blindness-oracle.py;app\webview\sotto_webview.py;app\webview\run.cmd" "%OUT%\ready-stream-blindness-neg.log" python _main\ready-stream-blindness-oracle.py --neg-arm
+call :record ready-stream-blindness-neg !STEP_RC!
+) else ( call :record ready-stream-blindness-neg MISSING )
+REM `worker-busy-loop`: nenhum `while` sem saida no worker, lido dos bytes.
+if exist _main\worker-busy-loop-oracle.py (
+call :step worker-busy-loop 0 "_main\worker-busy-loop-oracle.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\worker-busy-loop.log" python _main\worker-busy-loop-oracle.py
+call :record worker-busy-loop !STEP_RC!
+) else ( call :record worker-busy-loop MISSING )
+if exist _main\worker-busy-loop-oracle.py (
+call :step worker-busy-loop-neg 0 "_main\worker-busy-loop-oracle.py;worker\sotto_worker.py" "%OUT%\worker-busy-loop-neg.log" python _main\worker-busy-loop-oracle.py --neg-arm
+call :record worker-busy-loop-neg !STEP_RC!
+) else ( call :record worker-busy-loop-neg MISSING )
+REM `device-ladder-doc`: o README descreve a MESMA ordem de dispositivos do codigo.
+if exist _main\device-ladder-doc-oracle.py (
+call :step device-ladder-doc 0 "_main\device-ladder-doc-oracle.py;worker\sotto_worker.py;worker\README.md" "%OUT%\device-ladder-doc.log" python _main\device-ladder-doc-oracle.py
+call :record device-ladder-doc !STEP_RC!
+) else ( call :record device-ladder-doc MISSING )
+if exist _main\device-ladder-doc-oracle.py (
+call :step device-ladder-doc-neg 0 "_main\device-ladder-doc-oracle.py;worker\sotto_worker.py;worker\README.md" "%OUT%\device-ladder-doc-neg.log" python _main\device-ladder-doc-oracle.py --neg-arm
+call :record device-ladder-doc-neg !STEP_RC!
+) else ( call :record device-ladder-doc-neg MISSING )
 REM `log-mirror-bound` -- O ESPELHO DO LOG NAO PODE CRESCER SEM TECTO (medido
 REM 2026-11-27, audit #8a). `_LOG_QUEUE` era um `SimpleQueue()` sem limite, com um
 REM `put` por linha de log e contagem nenhuma: um produtor que fala depressa
@@ -4842,10 +4892,16 @@ if exist "%REVIVAL_SKILLS%\feature_map_sync.py" (
   call :step feature-map-selftest 0 "%REVIVAL_SKILLS%\feature_map_sync.py" "%OUT%\feature-map-selftest.log" python "%REVIVAL_SKILLS%\feature_map_sync.py" --selftest
   call :record feature-map-selftest !STEP_RC!
 ) else ( call :record feature-map-gate MISSING & call :record feature-map-selftest MISSING )
-if exist "%REVIVAL%\benchmark_history.py" (
-  call :step benchmark-gate 0 "benchmarks\budgets.json;benchmarks\history.jsonl;%REVIVAL%\benchmark_history.py" "%OUT%\benchmark-gate.log" python "%REVIVAL%\benchmark_history.py" run --repo . --label battery --gate
+REM O `!` DE `I:\!watcher` E ESCAPADO COMO `^!` DE PROPOSITO (medido 2026-11-27): este ficheiro
+REM corre com EnableDelayedExpansion ON, e nesse modo um `!` literal e consumido pelo parser --
+REM `I:\!watcher\scripts\...` e lido como `I:\watcher\scripts\...`, o `if exist` falha e os DOIS
+REM passos eram registados MISSING enquanto o ficheiro existia em disco. Reproduzido num .cmd de
+REM 6 linhas: literal -> MISSING/fail, `^!` -> EXISTS/rc 0. O mesmo `^!` vai no argumento de largada,
+REM nao so no guarda.
+if exist "I:\^!watcher\scripts\benchmark_history.py" (
+  call :step benchmark-gate 0 "benchmarks\budgets.json;benchmarks\history.jsonl;I:\^!watcher\scripts\benchmark_history.py" "%OUT%\benchmark-gate.log" python "I:\^!watcher\scripts\benchmark_history.py" run --repo . --label battery --gate
   call :record benchmark-gate !STEP_RC!
-  call :step benchmark-selftest 0 "%REVIVAL%\benchmark_history.py" "%OUT%\benchmark-selftest.log" python "%REVIVAL%\benchmark_history.py" --selftest
+  call :step benchmark-selftest 0 "I:\^!watcher\scripts\benchmark_history.py" "%OUT%\benchmark-selftest.log" python "I:\^!watcher\scripts\benchmark_history.py" --selftest
   call :record benchmark-selftest !STEP_RC!
 ) else ( call :record benchmark-gate MISSING & call :record benchmark-selftest MISSING )
 REM FAIL-FAST v4.1 (2026-11-27): o passo POSITIVO e o proprio auditor a julgar a
