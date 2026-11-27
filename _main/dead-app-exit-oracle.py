@@ -39,6 +39,7 @@ import shutil
 import subprocess
 import sys
 import time
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHELL_DIR = os.path.join(os.path.dirname(HERE), 'app', 'webview')
@@ -302,30 +303,59 @@ def static_arms():
 
 
 def source_control():
-    """O ARME REPARADO TEM DE SABER IR A VERMELHO.
+    """Every static arm must be able to go RED under a mutation of its subject.
 
-    A arm antiga (`watchdog_uses_hard_exit`) foi substituida em 2026-11-09 e o
-    substituto NAO pode ser um predicado que nunca falha: um portao que nao
-    consegue ficar vermelho nao e' um portao. Este controlo MUTA a fonte real EM
-    MEMORIA (o ficheiro nao e' tocado) e exige que o arme recuse as duas
-    regressoes -- voltar ao `_hard_exit(9, 'ui-watchdog')`, e ficar com um
-    caminho de recuperacao que ja' nao chama `_ui_hung_recover`.
+    Before 2026-11-27 only `watchdog_recovers_without_exiting` had a control:
+    five of six static arms were predicates never shown to be able to fail.
+    Each control mutates in memory (no owner file is written). The two original
+    watchdog control names are kept so the before/after count is comparable.
     """
     try:
         src = open(SHELL, encoding='utf-8').read()
     except OSError:                                     # noqa: BLE001
         return [('neg-arm:source-readable', False)]
-    arm = dict(STATIC_ARMS).get('watchdog_recovers_without_exiting')
-    if arm is None:
-        return [('neg-arm:arm-present', False)]
-    call = "self._ui_hung_recover('ui-watchdog')"
+    arms = dict(STATIC_ARMS)
     out = []
+
+    def control(name, arm_name, before, after):
+        arm = arms.get(arm_name)
+        mutated = src.replace(before, after, 1)
+        out.append((name, arm is not None and mutated != src
+                    and not arm(mutated)))
+
+    control('control:no-of-exit-outside-primitive/extra-exit',
+            'no_of_exit_outside_primitive', '\n', '\nos._exit(0)\n')
+    call = "self._ui_hung_recover('ui-watchdog')"
+    watchdog = arms.get('watchdog_recovers_without_exiting')
     for name, mutated in (
             ('neg-arm:old-hard-exit-rejected',
              src.replace(call, "_hard_exit(9, 'ui-watchdog')", 1)),
             ('neg-arm:recovery-gutted-rejected',
              src.replace(call, 'pass  # sem recuperacao', 1))):
-        out.append((name, mutated != src and not arm(mutated)))
+        out.append((name, mutated != src and watchdog is not None
+                    and not watchdog(mutated)))
+    control('control:exit-dump-not-compacted/force-false',
+            'exit_dump_not_compacted',
+            "_dump_thread_stacks('ui-thread-not-responding', force=True)",
+            "_dump_thread_stacks('ui-thread-not-responding', force=False)")
+    control('control:request-exit-uses-hard-exit/no-backstop',
+            'request_exit_uses_hard_exit',
+            'backstop_pids=_backstop', 'backstop_pids=None')
+    control('control:emit-iterates-snapshot/live-view',
+            'emit_iterates_snapshot',
+            'for _kind, _payload in list(q.items()):',
+            'for _kind, _payload in q.items():')
+    # `killer_script_present` reads the FILESYSTEM, not source text: point the
+    # module at an empty temp dir instead of touching the owner's script.
+    killer = arms.get('killer_script_present')
+    saved = SHELL_DIR
+    with tempfile.TemporaryDirectory(prefix='sotto-exit-control-') as empty:
+        globals()['SHELL_DIR'] = empty
+        try:
+            missing = killer is not None and not killer(src)
+        finally:
+            globals()['SHELL_DIR'] = saved
+    out.append(('control:killer-script-present/missing-file', missing))
     return out
 
 

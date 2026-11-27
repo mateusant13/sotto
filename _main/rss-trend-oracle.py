@@ -110,6 +110,31 @@ def read_log(path):
     return out, (column or 'none')
 
 
+def parser_fault_arm():
+    """FAULT: malformed/mixed-newline log bytes must not silently become a series.
+
+    The expected values are written here from the log TEXT, not read back from
+    `read_log`: a wrong column, a missed line ending or a garbage value that
+    quietly enters the series has to turn this arm RED.
+    """
+    fd, path = tempfile.mkstemp(prefix='rss-trend-fault-', suffix='.log')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8', newline='') as fh:
+            fh.write('BRIDGE_RSS rss_mb=999 private_mb=200 blocks=1\n')
+            fh.write('BRIDGE_RSS private_mb=garbage blocks=1\r\n')
+            fh.write('BRIDGE_RSS rss_mb=300 blocks=1\r\n')
+            fh.write('a line that is not BRIDGE_RSS at all\r\n')
+            fh.write('BRIDGE_RSS private_mb=150.5 blocks=1\n')
+        values, column = read_log(path)
+    finally:
+        os.remove(path)
+    want = [200.0, 300.0, 150.5]
+    ok = values == want and column == 'private_mb'
+    print('FAULT F1 MIXED-CRLF/MALFORMED -> n=%d column=%s series=%s  %s'
+          % (len(values), column, values, 'PASS' if ok else 'FAIL'))
+    return ok
+
+
 def arms():
     res = {}
     leak = [1200.0 + 30.0 * i for i in range(30)]
@@ -173,6 +198,7 @@ if __name__ == '__main__':
     if a.neg_arm:
         raise SystemExit(neg_arm())
     ok = all(arms().values())
+    fault_ok = parser_fault_arm()
     real = None
     # UM LOG AUSENTE NAO E' UMA SERIE VAZIA: `read_log` abriria e rebentaria com
     # traceback, e um traceback nao diz "nao ha serie para julgar". A ausencia
@@ -195,7 +221,7 @@ if __name__ == '__main__':
     #   * sem `--log`, ou serie curta     -> UNKNOWN, e a bateria conta-o por `:skipped`
     #     (`n < MIN_SAMPLES` nunca vira ok -- e' a doutrina do proprio modulo)
     #   * serie real julgada `FLAG`       -> RED, rc=1, com a coluna e os numeros
-    if not ok:
+    if not ok or not fault_ok:
         print('VERDICT: RED')
         raise SystemExit(1)
     if real is None:

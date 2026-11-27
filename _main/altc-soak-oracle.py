@@ -35,6 +35,7 @@ import argparse
 import importlib.util
 import os
 import sys
+from hypothesis import HealthCheck, given, settings, strategies as st
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEBVIEW = os.path.join(ROOT, 'app', 'webview')
@@ -140,7 +141,41 @@ def arms(mod):
         mismatch += 0 if burst == (visible, surface) else 1
     results.append(('d BURST-EQUALS-SEQUENCE', mismatch == 0,
                     'presses burst-vs-steps mismatches=%d' % mismatch))
+    prop_ok, prop_detail = property_arm(mod)
+    results.append(('e CADENCE-PROPERTY', prop_ok, prop_detail))
     return results
+
+
+LADDER = ((False, ''), (False, 'strip'), (True, 'strip'),
+          (True, 'panel'), (False, 'panel'))
+CADENCES = (0.0, 0.2, WINDOW_S, 0.8, 3.0, 11.0)
+
+
+def property_arm(mod):
+    """PROPERTY e CADENCIA: generated (taps, cadence), not five hand-picked counts.
+
+    The contract is independent of `soak`: the first tap always shows the bottom
+    strip whatever the cadence (no clock on the key path); a right-hand panel is
+    only a double inside the window; no press leaves the two-house ladder. All
+    three rules are the owner's order recorded in hotkey_gesture.next_action.
+    """
+    @settings(max_examples=32, deadline=None, database=None,
+              suppress_health_check=(HealthCheck.too_slow,))
+    @given(taps=st.integers(min_value=1, max_value=40),
+           cadence=st.sampled_from(CADENCES))
+    def check(taps, cadence):
+        _visible, _surface, trail = soak(mod, taps=taps, cadence=cadence)
+        assert len(trail) == taps
+        assert trail[0][2] == (True, 'strip')
+        assert all(now in LADDER for _tap, _was, now in trail)
+        if cadence > WINDOW_S:
+            assert all(now != (True, 'panel') for _tap, _was, now in trail)
+
+    try:
+        check()
+    except Exception as exc:  # noqa: BLE001
+        return False, 'falsified: %r' % (exc,)
+    return True, '32 generated (taps, cadence) pairs inside the ladder'
 
 
 MUTATIONS = (
