@@ -1579,6 +1579,46 @@ if exist _main\bridge-pump-fault-oracle.py (
 call :step red-as-expected-bridge-pump-fault 1 "_main\bridge-pump-fault-oracle.py;app\webview\sotto_webview.py" "%OUT%\bridge-pump-fault-neg.log" python _main\bridge-pump-fault-oracle.py --neg-arm
 call :expectred red-as-expected-bridge-pump-fault !STEP_RC! "%OUT%\bridge-pump-fault-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-bridge-pump-fault MISSING "%OUT%\bridge-pump-fault-neg.log" "NEG-ARM: PASS" )
+REM `log-mirror-bound` -- O ESPELHO DO LOG NAO PODE CRESCER SEM TECTO (medido
+REM 2026-11-27, audit #8a). `_LOG_QUEUE` era um `SimpleQueue()` sem limite, com um
+REM `put` por linha de log e contagem nenhuma: um produtor que fala depressa
+REM enche a memoria do processo dono das legendas. Agora e' uma `Queue` de 4096 com
+REM `put_nowait`, contador `_LOG_DROPPED` e a linha `LOG_MIRROR_SUPPLIED dropped=N`;
+REM a arm vermelha volta ao `SimpleQueue()` e tem de cair.
+if exist _main\log-mirror-bound-oracle.py (
+call :step log-mirror-bound 0 "_main\log-mirror-bound-oracle.py;app\webview\sotto_webview.py" "%OUT%\log-mirror-bound.log" python _main\log-mirror-bound-oracle.py
+call :record log-mirror-bound !STEP_RC!
+) else ( call :record log-mirror-bound MISSING )
+if exist _main\log-mirror-bound-oracle.py (
+call :step red-as-expected-log-mirror-bound 1 "_main\log-mirror-bound-oracle.py;app\webview\sotto_webview.py" "%OUT%\log-mirror-bound-neg.log" python _main\log-mirror-bound-oracle.py --neg-arm
+call :expectred red-as-expected-log-mirror-bound !STEP_RC! "%OUT%\log-mirror-bound-neg.log" "2 of 2 arm(s) caught"
+) else ( call :expectred red-as-expected-log-mirror-bound MISSING "%OUT%\log-mirror-bound-neg.log" "2 of 2 arm(s) caught" )
+REM `redux-caption-bound` -- A FILA DE LEGENDAS DO WORKER (medido 2026-11-27).
+REM `self._captions = queue.Queue()` sem `maxsize`: dois produtores bloqueavam num
+REM `drain_captions()` parado e a fila crescia sem limite. Agora `maxsize=1024`,
+REM `put_nowait`, contador `caption_drops` e `REDUX_CAPTION_DROP` com taxa; a arm
+REM vermelha tira o contador e tem de cair.
+if exist _main\redux-caption-bound-oracle.py (
+call :step redux-caption-bound 0 "_main\redux-caption-bound-oracle.py;worker\engine_switch.py" "%OUT%\redux-caption-bound.log" python _main\redux-caption-bound-oracle.py
+call :record redux-caption-bound !STEP_RC!
+) else ( call :record redux-caption-bound MISSING )
+if exist _main\redux-caption-bound-oracle.py (
+call :step red-as-expected-redux-caption-bound 1 "_main\redux-caption-bound-oracle.py;worker\engine_switch.py" "%OUT%\redux-caption-bound-neg.log" python _main\redux-caption-bound-oracle.py --neg-arm
+call :expectred red-as-expected-redux-caption-bound !STEP_RC! "%OUT%\redux-caption-bound-neg.log" "2 of 2 mutant(s) caught"
+) else ( call :expectred red-as-expected-redux-caption-bound MISSING "%OUT%\redux-caption-bound-neg.log" "2 of 2 mutant(s) caught" )
+REM `revive-park-owner` -- UM REVIVE QUE NAO PUBLICA O PARQUE (medido 2026-11-27).
+REM `_do_revive` limpava `_paused`/`_external_parked`/`_vram_parked` mas nunca
+REM chamava `set_engine_park(None)`, o dono unico da chave publicada em
+REM `panel-visibility.json`, logo o worker revivido continuava a largar o motor.
+REM A arm vermelha remove a chamada e tem de cair.
+if exist _main\revive-park-owner-oracle.py (
+call :step revive-park-owner 0 "_main\revive-park-owner-oracle.py;app\webview\sotto_webview.py" "%OUT%\revive-park-owner.log" python _main\revive-park-owner-oracle.py
+call :record revive-park-owner !STEP_RC!
+) else ( call :record revive-park-owner MISSING )
+if exist _main\revive-park-owner-oracle.py (
+call :step red-as-expected-revive-park-owner 1 "_main\revive-park-owner-oracle.py;app\webview\sotto_webview.py" "%OUT%\revive-park-owner-neg.log" python _main\revive-park-owner-oracle.py --neg-arm
+call :expectred red-as-expected-revive-park-owner !STEP_RC! "%OUT%\revive-park-owner-neg.log" "2 of 2 arm(s) caught"
+) else ( call :expectred red-as-expected-revive-park-owner MISSING "%OUT%\revive-park-owner-neg.log" "2 of 2 arm(s) caught" )
 REM `yt-headless-paint` (a metade dos PIXEIS, fora do ecra: o bitmap GDI+ real
 REM de `overlay_paint._layout`, lido por `LockBits`). Nao abre janela nem
 REM dispositivo -- o proprio passo imprime `windows_opened=0` -- logo NAO e' heavy.

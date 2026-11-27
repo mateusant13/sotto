@@ -61,7 +61,11 @@ def run_pump(mod, lines, raising_token="BOOM"):
             raise TypeError("field of the wrong type")
         consumed.append(line)
 
-    b = object.__new__(bridge_cls)
+    # CONSTRUCAO A SERIO, nao `object.__new__`: o `__init__` deste bridge so
+    # monta estado (o processo do worker nasce em start(), nao aqui), logo
+    # construir de verdade custa nada e exercita o mesmo objecto que a shell
+    # usa -- o que um bypass silencioso deixaria de testar.
+    b = bridge_cls(command=sys.executable, worker_path="", log=logs.append)
     b.log = lambda m: logs.append(m)
     b.last_progress_at = 0.0
     b.stderr_tail = []
