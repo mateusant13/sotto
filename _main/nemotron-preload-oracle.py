@@ -27,6 +27,21 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHELL = os.path.join(ROOT, "app", "webview", "sotto_webview.py")
 WORKER = os.path.join(ROOT, "worker", "sotto_worker.py")
 
+#: AS LINHAS PARTEM-SE UMA VEZ POR FONTE (medido 2026-11-26, `cProfile` sobre
+#: este ficheiro): 12 chamadas a `ast.get_source_segment` sobre a shell de
+#: 1,5 MB custavam **6,75 s dos 11,68 s** do processo inteiro, porque cada
+#: chamada re-parte a fonte completa em `ast._splitlines_no_ff` (0,56 s cada).
+#: `_astcache.lines` guarda a particao por conteudo e `segment` fatia-a -- a
+#: MESMA particao (`ast._splitlines_no_ff` quando existe), logo o texto extraido
+#: e' byte-identico. O GANHO, medido nas duas direcoes no mesmo dia:
+#: positivo **6,9 s parede / 5,39 s CPU -> 4,1 s / 3,00 s**; `--neg-arm`
+#: **60,8 s / 51,44 s CPU -> 20,5 s / 17,28 s** com **17/17** mutantes ainda
+#: apanhados (rc 1), logo a cura tirou tempo e nao deteccao.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from _astcache import segment as _segment  # noqa: E402
+
 
 def _read(path):
     with open(path, encoding="utf-8") as stream:
@@ -99,22 +114,22 @@ def check_sources(shell_text, worker_text, shell_tree=None, worker_tree=None):
                     for t in n.targets)
             for n in ast.walk(start)):
         misses.append("WorkerBridge.start does not preserve the preload reason")
-    start_src = ast.get_source_segment(shell_text, start) or "" if start else ""
+    start_src = _segment(shell_text, start) or "" if start else ""
     if (start is None or "self.start_reason == 'preload'" not in start_src
             or "self.state = 'preloading'" not in start_src):
         misses.append("preload start emits a bridge status while the panel is closed")
     bridge_status = _class_method(shell_tree, "WorkerBridge", "_bridge_status")
-    bridge_status_src = ast.get_source_segment(shell_text, bridge_status) or "" if bridge_status else ""
+    bridge_status_src = _segment(shell_text, bridge_status) or "" if bridge_status else ""
     if ("self.start_reason == 'preload' and not self.capture_requested" not in bridge_status_src
             or "self.last_error =" not in bridge_status_src):
         misses.append("hidden preload status/error is not retained without publication")
-    request_src = ast.get_source_segment(shell_text, request_capture) or "" if request_capture else ""
+    request_src = _segment(shell_text, request_capture) or "" if request_capture else ""
     if ("if self.last_error:" not in request_src
             or "self._publish_preload_error()" not in request_src
             or request_src.find("if self.last_error:") > request_src.find("_send_start_capture")):
         misses.append("activation can send START_CAPTURE after a retained preload error")
     publish_error = _class_method(shell_tree, "WorkerBridge", "_publish_preload_error")
-    publish_src = ast.get_source_segment(shell_text, publish_error) or "" if publish_error else ""
+    publish_src = _segment(shell_text, publish_error) or "" if publish_error else ""
     publish_body = list(publish_error.body) if publish_error else []
     if (publish_body and isinstance(publish_body[0], ast.Expr)
             and isinstance(publish_body[0].value, ast.Constant)
@@ -142,9 +157,9 @@ def check_sources(shell_text, worker_text, shell_tree=None, worker_tree=None):
     if request_capture is None or "_send_start_capture" not in _call_names(request_capture):
         misses.append("WorkerBridge.request_capture does not use the command writer")
     if send_helper is None or 'pipe.write(\'START_CAPTURE\\n\')' not in (
-            ast.get_source_segment(shell_text, send_helper) or ""):
+            _segment(shell_text, send_helper) or ""):
         misses.append("bridge command writer does not emit the exact START_CAPTURE line")
-    send_src = ast.get_source_segment(shell_text, send_helper) or "" if send_helper else ""
+    send_src = _segment(shell_text, send_helper) or "" if send_helper else ""
     if "if already_sent:" not in send_src or "return True, True" not in send_src:
         misses.append("START_CAPTURE command writer is not idempotent")
     if deferred is None or "request_capture" not in _call_names(deferred):
@@ -240,19 +255,19 @@ def check_sources(shell_text, worker_text, shell_tree=None, worker_tree=None):
             misses.append("worker main source region could not be bounded")
 
     if helper is not None:
-        helper_source = ast.get_source_segment(worker_text, helper) or ""
+        helper_source = _segment(worker_text, helper) or ""
         if "readline(65)" not in helper_source:
             misses.append("activation command reader is not length-bounded")
         if 'line == "START_CAPTURE\\n"' not in helper_source:
             misses.append("activation command reader does not fail closed on exact protocol")
 
     build = _class_method(worker_tree, "StreamAsr", "_build_frontend")
-    if build is None or "frontend-ready" not in (ast.get_source_segment(worker_text, build) or ""):
+    if build is None or "frontend-ready" not in (_segment(worker_text, build) or ""):
         misses.append("frontend builder does not publish frontend-ready after success")
 
     schedule = _class_method(shell_tree, "SottoShell", "_schedule_preload_worker")
     if schedule is None or "SOTTO_NO_PRELOAD" not in (
-            ast.get_source_segment(shell_text, schedule) or ""):
+            _segment(shell_text, schedule) or ""):
         misses.append("startup preload opt-out SOTTO_NO_PRELOAD was removed")
 
     # The actual hidden route stores audio once and continues before the live
@@ -293,7 +308,7 @@ def check_sources(shell_text, worker_text, shell_tree=None, worker_tree=None):
     fresh = _class_method(worker_tree, "StreamAsr", "fresh_processor")
     make = _class_method(worker_tree, "StreamAsr", "_make_processor")
     fresh_calls = set(_call_names(fresh)) if fresh else set()
-    make_src = ast.get_source_segment(worker_text, make) or "" if make else ""
+    make_src = _segment(worker_text, make) or "" if make else ""
     if "_make_processor" not in fresh_calls or "self.model.create_streaming_processor()" not in make_src:
         misses.append("stream re-entry does not reuse retained GenAI model weights")
     if "_og.Model(" in make_src or "og.Model(" in make_src:
@@ -302,10 +317,10 @@ def check_sources(shell_text, worker_text, shell_tree=None, worker_tree=None):
     status_fn = next((n for n in shell_tree.body if isinstance(n, ast.FunctionDef)
                       and n.name == "caption_status_for"), None)
     if status_fn is None or "frontend-preparing" not in (
-            ast.get_source_segment(shell_text, status_fn) or ""):
+            _segment(shell_text, status_fn) or ""):
         misses.append("native caption status does not cover frontend preparation")
     bridge_consume = _class_method(shell_tree, "WorkerBridge", "_consume")
-    consume_src = ast.get_source_segment(shell_text, bridge_consume) or "" if bridge_consume else ""
+    consume_src = _segment(shell_text, bridge_consume) or "" if bridge_consume else ""
     status_hold = next((n for n in ast.walk(bridge_consume) if isinstance(n, ast.If)
                         and isinstance(n.test, ast.Name) and n.test.id == "preload_hidden"), None) \
         if bridge_consume else None
@@ -773,6 +788,24 @@ if second != \"\":
             # model-loaded/frontend-preparing, never for frontend-ready. A stale
             # ready overlay therefore turns this arm red deterministically.
             if not early_open:
+                # BARRAGE BOUNDED, not a live read. `_pump` sets `self.state`
+                # (sotto_webview.py:25963) BEFORE it sets `self.loaded` (:26040)
+                # for the SAME `model-loaded` message, so `bridge.loaded` is a
+                # second fact that can lag the state this case just waited for:
+                # with `loaded=False` the projection answers 'model-loading' and
+                # the arm goes red on nothing. MEASURED 2026-11-26, the same
+                # tree: 1 of 3 runs under `cProfile` returned
+                # "ready-before-open status did not clear on activation", the
+                # other two PASSed, and 2 of 2 plain runs PASSed. A gate that
+                # flips with the pump thread is the class this file already
+                # replaced once (`if status_events:`, see the note above): wait
+                # for the CONTRACT fact, then judge it.
+                loaded_deadline = time.monotonic() + 5.0
+                while not bridge.loaded and time.monotonic() < loaded_deadline:
+                    time.sleep(0.01)
+                if not bridge.loaded:
+                    case_failures.append(
+                        "bridge never reported loaded after frontend-ready")
                 ready_state = dict(
                     wanted=True, player_owns=False, painted_recent=False,
                     track_known=False, track_cues=0, rows=0, bridge=True,
