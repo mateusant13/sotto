@@ -276,9 +276,13 @@ def arm_persistence(plan, *_):
         and corrupt == (0, 0)))
 
 
+def _bare(module):
+    """O seam documentado no produto: estado real, sem janela Win32."""
+    return module.NativeCaptionOverlay.for_test()
+
 def _paint_overlay(armed, dragging):
     """Um overlay SEM janela: so' o estado que a marca le'."""
-    ov = object.__new__(caption_overlay.NativeCaptionOverlay)
+    ov = _bare(caption_overlay)
     ov._drag_armed = bool(armed)
     ov._drag_dragging = bool(dragging)
     ov._drag_canvas = None
@@ -313,7 +317,7 @@ def arm_mark(pulse, *_):
 
 
 def _tick_probe(content, armed=False, dragging=False):
-    ov = object.__new__(caption_overlay.NativeCaptionOverlay)
+    ov = _bare(caption_overlay)
     ov.lock = threading.RLock()
     ov._tick_gen = 0
     ov.hwnd = None
@@ -324,7 +328,7 @@ def _tick_probe(content, armed=False, dragging=False):
     ov._drag_offset = (0, 0)
     ov._drag = caption_drag.DragState()
     ov._drag_canvas = None
-    ov._tick_content = content
+    ov._content_due_at = 0.0 if content else None   # o probe ja' nao herda um atributo ausente
     ov.log = lambda _msg: None
     ov.scale = 1.0
     ov.paints = []
@@ -424,7 +428,7 @@ def arm_drag_poll_split(plan, *_args, module=None):
 def _drag_rate_probe(seconds=1.0, module=None, moved=False):
     """O laco REAL a arrastar: conta os ticks do poll e as pinturas."""
     module = module or caption_overlay
-    ov = object.__new__(module.NativeCaptionOverlay)
+    ov = _bare(module)
     ov.lock = threading.RLock()
     ov._tick_gen = 0
     ov._tick_wake_gen = 0
@@ -516,7 +520,7 @@ def _budget_probe(module):
         def is_alive(self):
             return True
 
-    ov = object.__new__(module.NativeCaptionOverlay)
+    ov = _bare(module)
     ov.lock = threading.RLock()
     ov._tick_gen = 0
     ov._tick_wake_gen = 0
@@ -600,7 +604,7 @@ def _contention_probe(module, warmup=0.25, hold=0.30):
     Windows do que sobre o codigo.
     """
     module = module or caption_overlay
-    ov = object.__new__(module.NativeCaptionOverlay)
+    ov = _bare(module)
     ov.lock = threading.RLock()
     ov._poll_lock = threading.RLock()
     ov._sched_lock = threading.RLock()

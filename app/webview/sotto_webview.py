@@ -22198,6 +22198,20 @@ class SottoShell:
         """
         self.meter_pushes += 1
         self.emit_async('stats', self.stats())
+
+    @classmethod
+    def for_test(cls):
+        """Shell sem WebView2: so' o estado do latch de `emit_async`.
+
+        `_main/emit-queue-bound-oracle.py` mede a fila limitada com o
+        `emit_async` REAL. A shell completa abre WebView2 e fios; aqui so'
+        existe o estado que `__init__` publica para o latch. Nao usar na app.
+        """
+        obj = object.__new__(cls)
+        obj._emit_lock = threading.Lock()
+        obj._emit_pending = {}
+        return obj
+
     def emit_async(self, kind, payload):
         """`emit` WITH A LATCH — for a per-sample feed.
 

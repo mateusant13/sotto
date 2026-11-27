@@ -365,7 +365,9 @@ def arms(world):
         os.environ['SOTTO_ENDPOINT_JOURNAL'] = tmp
 
         def _tap(eid, peak, blocks, packets, silent, age=6.0):
-            t = object.__new__(wl.WasapiLoopbackTap)
+            t = wl.WasapiLoopbackTap.for_test(
+                ep=types.SimpleNamespace(endpoint_id=eid, name=eid,
+                                         rate=48000, channels=1, bits=32))
             t.ep = types.SimpleNamespace(endpoint_id=eid, name=eid)
             # O MESMO formato do rung do DEFAULT: o tap resolve o endpoint em
             # `.ep` e NAO recebe id nenhum. Ler `self.endpoint_id` aqui escrevia
@@ -389,7 +391,8 @@ def arms(world):
               and got.get('ep-loud', {}).get('verdict') == 'signal')
         add('10b tap-real-escreve-signal-e-flat', ok,
             'sem_ep=%r veredictos=%s'
-            % (wl.WasapiLoopbackTap._record_verdict(object.__new__(wl.WasapiLoopbackTap)) is None,
+            % (wl.WasapiLoopbackTap._record_verdict(
+                   _tap(None, 0.0, 0, 0, 0)) is None,
                {k: v['verdict'] for k, v in got.items()}))
     finally:
         if old_env is None:

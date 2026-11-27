@@ -117,7 +117,7 @@ def _live_display(now):
     live.push(LINE1, now - 2.40)
     live.push(LINE2, now - 1.20)
     live.push(LINE3, now - 0.20)
-    obj = object.__new__(caption_overlay.NativeCaptionOverlay)
+    obj = caption_overlay.NativeCaptionOverlay.for_test()
     obj._cue = None
     obj._live = live
     obj._row_alphas = None
@@ -131,7 +131,7 @@ def _live_settled(now):
     live = youtube_reveal.LiveRows(wrap=lambda text: [text])
     live.push(LINE1, now - 1.20)
     live.push(LINE2, now - 0.20)
-    obj = object.__new__(caption_overlay.NativeCaptionOverlay)
+    obj = caption_overlay.NativeCaptionOverlay.for_test()
     obj._cue = None
     obj._live = live
     obj._row_alphas = None

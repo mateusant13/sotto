@@ -1061,6 +1061,25 @@ class WasapiLoopbackTap:
     """
 
     def __init__(self, on_block, block_ms=100, role=E_CONSOLE, endpoint_id=None):
+        ep = (default_render_endpoint(role) if endpoint_id is None
+              else endpoint_spec(endpoint_id))
+        self._init_state(on_block, ep, block_ms, role, endpoint_id)
+
+    @classmethod
+    def for_test(cls, ep, endpoint_id=None, on_block=None, block_ms=100,
+                 role=E_CONSOLE):
+        """Tap sem COM: o estado REAL, sem abrir o endpoint.
+
+        `_main/device-ladder-cost-oracle.py` exercita `_record_verdict` com um
+        endpoint falso; `ep` e' o objecto que o `_pump` escreve. Nao usar no
+        worker: nao abre dispositivo nem comeca o pump.
+        """
+        obj = object.__new__(cls)
+        obj._init_state(on_block or (lambda *_a: None), ep, block_ms, role,
+                        endpoint_id)
+        return obj
+
+    def _init_state(self, on_block, ep, block_ms, role, endpoint_id):
         import numpy as np
 
         self.np = np
@@ -1085,8 +1104,7 @@ class WasapiLoopbackTap:
         # box 2026-10-06: the owner's Chrome rendered to `CABLE Input` while the
         # default was `VoiceMeeter Input`, whose loopback read 0 blocks / peak 0.
         self.endpoint_id = endpoint_id
-        self.ep = (default_render_endpoint(role) if endpoint_id is None
-                   else endpoint_spec(endpoint_id))
+        self.ep = ep
         self.rate = self.ep.rate
         self.native_rate = self.rate
         self.channels = self.ep.channels

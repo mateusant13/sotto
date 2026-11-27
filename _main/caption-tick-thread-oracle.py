@@ -89,8 +89,12 @@ def _arm_a6(module_path):
             and int(getattr(wf, "FRAME_HZ", 0) or 0) == 240)
 
 
+def _bare(module):
+    """O seam documentado no produto: estado real, sem janela Win32."""
+    return module.NativeCaptionOverlay.for_test()
+
 def _arm_a7(module):
-    probe = object.__new__(module.NativeCaptionOverlay)
+    probe = _bare(module)
     probe._paint_cost_s = 0.0116
     probe._paint_frame_cost_s = 0.0116
     probe._paint_limit_logged = 0.0
@@ -142,7 +146,7 @@ def _last_nap_is_sleep(module):
     def fake_sleep(seconds):
         seen["sleep"] += float(seconds or 0.0)
 
-    obj = object.__new__(module.NativeCaptionOverlay)
+    obj = _bare(module)
     obj.lock = threading.RLock()
     obj._tick_gen = 0
     obj._tick_wake_gen = 0
@@ -169,9 +173,10 @@ def _last_nap_is_sleep(module):
 
 def _make(delay=0.005):
     """Um overlay SEM janela: os metodos reais, o `_update` contado."""
-    obj = object.__new__(caption_overlay.NativeCaptionOverlay)
+    obj = _bare(caption_overlay)
     obj.lock = threading.RLock()
     obj._tick_gen = 0
+    obj._content_due_at = 0.0           # conteudo VENCIDO: cada tick e' um frame
     obj._tick_timer = None
     obj._tick_event = threading.Event()
     obj._tick_thread = None
@@ -214,9 +219,10 @@ def _arm_a10(module, seconds=0.9, cost=0.0116):
     Devolve (fracao, hz, quadros, tecto_hz).
     """
     budget = float(getattr(module, "CAPTION_FRAME_BUDGET", 0.0) or 0.0)
-    obj = object.__new__(module.NativeCaptionOverlay)
+    obj = _bare(module)
     obj.lock = threading.RLock()
     obj._tick_gen = 0
+    obj._content_due_at = 0.0          # conteudo VENCIDO: o orcamento vale
     obj._tick_wake_gen = 0
     obj._tick_event = threading.Event()
     obj._tick_thread = None
@@ -262,7 +268,7 @@ def _arm_a11(module):
     medido a SOMA das fases e que o `_limit_by_paint` a divida pelo orcamento.
     """
     budget = float(getattr(module, "CAPTION_FRAME_BUDGET", 0.0) or 0.0)
-    probe = object.__new__(module.NativeCaptionOverlay)
+    probe = _bare(module)
     probe.lock = threading.RLock()
     probe._poll_lock = threading.RLock()
     probe._sched_lock = threading.RLock()
@@ -319,7 +325,7 @@ def _arm_a12(module):
     laco pode ja' estar entre o teste de geracao e o `_tick(gen)` quando o hide
     roda -- a GERACAO que ele levou e' o unico identificador sem corrida.
     """
-    obj = object.__new__(module.NativeCaptionOverlay)
+    obj = _bare(module)
     obj.lock = threading.RLock()
     obj._sched_lock = threading.RLock()
     obj._poll_lock = threading.RLock()
@@ -370,7 +376,7 @@ def _arm_a13(module, seconds=0.2):
     A limpeza e' uma leitura e uma escrita, logo o custo de esperar 0,2 s nao se
     paga em CPU: paga-se em nao ter um portao que mente.
     """
-    obj = object.__new__(module.NativeCaptionOverlay)
+    obj = _bare(module)
     obj.lock = threading.RLock()
     obj._sched_lock = threading.RLock()
     obj._poll_lock = threading.RLock()
@@ -444,7 +450,7 @@ def main(argv=None) -> int:
     # A7: um quadro que CUSTA mais do que o pedido levanta o prazo ao custo -- e
     # diz o numero no log. Sem esta arm o tecto de 240 seria um pedido que a
     # pintura de 11,6 ms nunca pode honrar, e a animacao engasgaria.
-    probe = object.__new__(caption_overlay.NativeCaptionOverlay)
+    probe = _bare(caption_overlay)
     probe._paint_cost_s = 0.0116
     probe._paint_frame_cost_s = 0.0116
     probe._paint_limit_logged = 0.0
@@ -455,7 +461,7 @@ def main(argv=None) -> int:
     a7a = (_budget > 0.0 and abs(limited - 0.0116 / _budget) < 1e-9
            and limited > 0.0116 * 1.05)
     a7b = any("CAPTION_FRAME_LIMIT" in ln for ln in lines)
-    free = object.__new__(caption_overlay.NativeCaptionOverlay)
+    free = _bare(caption_overlay)
     free._paint_cost_s = 0.0
     free._paint_frame_cost_s = 0.0
     free._paint_limit_logged = 0.0

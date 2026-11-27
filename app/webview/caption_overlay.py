@@ -573,6 +573,32 @@ class NativeCaptionOverlay:
     CLASS_NAME = "SottoNativeCaption"
 
     def __init__(self, log=None):
+        self._init_state(log)
+        # THE WINDOW OWNS ITS OWN THREAD AND MESSAGE PUMP. Creating it on the
+        # pywebview/WinForms UI thread meant every Win32 call from the caption
+        # watcher blocked the UI thread (measured 2026-10-17: the UI thread
+        # stopped pumping and `_ui` logged `UI_THREAD_STALL` for 10 s). A
+        # dedicated owner is the standard shape for a topmost overlay and it
+        # keeps the panel's WebView2 thread free.
+        self._thread = threading.Thread(target=self._thread_main,
+                                        name='sotto-caption-overlay', daemon=True)
+        self._thread.start()
+        self._ready.wait(5.0)
+
+    @classmethod
+    def for_test(cls, log=None):
+        """Overlay sem janela: o estado REAL, sem o fio de mensagens.
+
+        Os oraculos de tick, arrasto e roll-up exercem os metodos reais
+        (`_tick`, `_display`, `_limit_by_paint`) sem abrir a janela Win32 que
+        `__init__` cria. Estado = o de producao; faltam so' a janela e o fio.
+        Nao usar na aplicacao.
+        """
+        obj = object.__new__(cls)
+        obj._init_state(log)
+        return obj
+
+    def _init_state(self, log=None):
         self.log = log or (lambda msg: None)
         self.lock = threading.RLock()
         #: O CADEADO DO POLL DO ARRASTO (ordem do dono, verbatim: *"segurar o
@@ -660,6 +686,7 @@ class NativeCaptionOverlay:
         # no `Event` com prazo: ver `_tick_loop`.
         self._tick_timer = None          # compatibilidade: o ultimo PRAZO, nao um fio
         self._tick_event = threading.Event()
+        self._thread = None
         self._tick_thread = None
         self._tick_deadline = 0.0        # `_frame_now`; 0 = nada armado
         #: O custo MEDIDO do ultimo `_update` (segundos) -- so' a fase de pintura.
@@ -746,16 +773,6 @@ class NativeCaptionOverlay:
         self._drag_paints = 0
         self._drag_paint_s = 0.0
         self._drag_t0 = 0.0
-        # THE WINDOW OWNS ITS OWN THREAD AND MESSAGE PUMP. Creating it on the
-        # pywebview/WinForms UI thread meant every Win32 call from the caption
-        # watcher blocked the UI thread (measured 2026-10-17: the UI thread
-        # stopped pumping and `_ui` logged `UI_THREAD_STALL` for 10 s). A
-        # dedicated owner is the standard shape for a topmost overlay and it
-        # keeps the panel's WebView2 thread free.
-        self._thread = threading.Thread(target=self._thread_main,
-                                        name='sotto-caption-overlay', daemon=True)
-        self._thread.start()
-        self._ready.wait(5.0)
 
     def _thread_main(self):
         self.thread_id = int(_kernel32.GetCurrentThreadId())
@@ -2159,7 +2176,7 @@ class NativeCaptionOverlay:
             except Exception:
                 pass
             self.hwnd = None
-        if self._thread.is_alive():
+        if getattr(self, '_thread', None) is not None and self._thread.is_alive():
             self._thread.join(2.0)
 
 

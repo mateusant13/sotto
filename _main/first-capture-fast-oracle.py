@@ -94,17 +94,8 @@ class FakeTimer:
 
 
 def bridge_stub(mod, sink, **attrs):
-    """Um `WorkerBridge` sem `__init__`: os atributos que `_schedule_restart` le'."""
-    b = object.__new__(mod.WorkerBridge)
-    b.stopped = False
-    b.restarts = 0
-    b.no_audio_restarts = 0
-    b.backoff_base = 1000
-    b.backoff_max = 30000
-    b.no_audio_backoff_base = 15000
-    b.no_audio_backoff_max = 300000
-    b.no_audio_restart_cap = 3
-    b._restart_timer = None
+    """Uma ponte REAL: `__init__` so' monta estado, sem arrancar o worker."""
+    b = mod.WorkerBridge(command=sys.executable, worker_path='', log=sink)
     b._restart = lambda: None
     b._arm_audio_resume = lambda *a, **k: None
     b.captions = 0

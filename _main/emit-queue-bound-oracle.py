@@ -1,8 +1,8 @@
 """Oracle: the UI emit queue is BOUNDED -- one pending post per channel.
 
 INSTRUMENT, IN PROCESS. It never launches the shell, the worker or a browser: it
-imports app/webview/sotto_webview.py, builds a shell with object.__new__ (so no
-__init__, no window, no locks) and stubs the only two things emit_async touches --
+imports app/webview/sotto_webview.py, uses the documented `SottoShell.for_test()`
+seam (no WebView2, no threads) and stubs the only two things emit_async touches --
 _post (the BeginInvoke) and the WebView2 core (ExecuteScriptAsync).
 
 THE CLAIM, verbatim from emit_async's own contract: every payload is a WHOLE
@@ -93,7 +93,7 @@ def load_shell(path, name):
 
 
 def make_shell(mod, posted):
-    shell = object.__new__(mod.SottoShell)
+    shell = mod.SottoShell.for_test()
     shell._post = lambda fn: posted.append(fn)
     shell.webview2 = FakeWV2()
     shell.core = FakeCore()
