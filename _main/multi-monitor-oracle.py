@@ -7,7 +7,7 @@ MONITOR_DEFAULTTOPRIMARY)` decide where the strip opens, and docs/shell-contract
 said so. The Alt+C path actually goes through `work_area()` -> `target_display()`
 (the cursor / foreground window), but neither the choice nor the work-area clamp
 had an instrument. This oracle takes the DECISION FUNCTION out of the shipped
-`app/webview/sotto_webview.py` by AST, and runs it on invented two/three-monitor
+module `app/webview/display_geometry.py` by AST, and runs it on invented two/three-monitor
 fixtures: no window, no mouse, no monitor, no model, no app. It also checks that
 the shipped shell really wires `work_area()` / `geometry_for('strip')` to it.
 
@@ -47,6 +47,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, os.pardir))
 SHELL = os.path.join(ROOT, 'app', 'webview', 'sotto_webview.py')
+GEOMETRY = os.path.join(ROOT, 'app', 'webview', 'display_geometry.py')
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -78,8 +79,18 @@ WIRE_MUTANT = "    result = {'display': None, 'geometry': geometry}"
 
 
 def read_source(path=SHELL):
+    """Both halves of the cut: the shell's wiring and the module's selector.
+
+    S1 moved `select_display_for_point` into `display_geometry.py`, but the
+    wiring arms below still assert against the shipped shell. One combined
+    source keeps the AST arm on the REAL function and every wiring/mutation
+    anchor on the REAL caller.
+    """
     with open(path, 'r', encoding='utf-8') as handle:
-        return handle.read()
+        shell = handle.read()
+    with open(GEOMETRY, 'r', encoding='utf-8') as handle:
+        geometry = handle.read()
+    return shell + '\n' + geometry
 
 
 def load_selector(source):
@@ -91,7 +102,7 @@ def load_selector(source):
             namespace = {}
             exec(compile(segment, '<select_display_for_point>', 'exec'), namespace)
             return namespace['select_display_for_point']
-    raise RuntimeError('select_display_for_point is GONE from the shell source')
+    raise RuntimeError('select_display_for_point is GONE from the geometry module source')
 
 
 def check(label, got, want):

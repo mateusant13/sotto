@@ -623,7 +623,20 @@ testemunhas a discordar no MESMO tick: `YOUTUBE_PAUSE_DISAGREED clock_rate=0.58`
 - **A prova depois do reinicio dele e' um comando:**
   `python _main/yt-pause-disagreement-oracle.py --log _main/webview-run.log` -> `CLEAN`. A janela
   DEFAULT e' a ultima sessao (`SHELL_STARTUP_STAGE`); `--since 'YYYY-MM-DD HH:MM'` escolhe outra.
-  Medido no log historico: 18 episodios contraditos antes do fix, e 1 na sessao dele.
+- **O DANO E' O APAGAR, NAO A CONVERGENCIA (corrigido 2026-11-27, e o numero e' o que o condenou).**
+  A regra antiga chamava contradicao a qualquer `YOUTUBE_PAUSE_PROVEN` a menos de 5 linhas de um
+  `YOUTUBE_PAUSE_DISAGREED` com o mesmo `t`: **32 episodios** no log inteiro e **9 na ultima sessao
+  do dono** -- mas nessa sessao havia **UM** `CAPTION_WINDOW_BLANKED reason=youtube-paused` em 23 395
+  linhas, e ele veio de um `PROVEN held_s=0.5 t=2.85` com o `RESUMED` 13 linhas depois. **Zero dano.**
+  O que ela acusava era `pause_proven` a funcionar: a 1a foto ainda andava (DISAGREED), a 2a ja'
+  estava parada (PROVEN). A regra nova exige a CONJUNCAO de dano -- um `CAPTION_WINDOW_BLANKED
+  reason=youtube-paused*` armado por um `PROVEN` cujo proprio episodio mediu `DISAGREED` no mesmo `t`
+  (`T_MATCH_S = 0.05`), mesmo video, a menos de 8 linhas -- e devolve as duas direcoes medidas hoje,
+  na MESMA arvore: a ultima sessao `episodes=27 contradicted=0 settled=9 VERDICT: CLEAN` (rc 0), e a
+  janela pre-fix `--since '2026-11-26 02:37:5'` `contradicted=2` nos dois episodios das 02:38.017/:10
+  (`rc 1`). Portao: as 5 arms + os **9** mutantes do `--neg-arm` do
+  `_main/yt-pause-disagreement-oracle.py`, incluindo os dois mutantes do CLASSIFICADOR
+  (`e-volta-a-regra-antiga`, `e-cego-ao-carimbo`).
 
 ## UM SILENCIO NO LOG TEM DOIS DONOS, E O PRODUTO TEM DE DIZER QUAL (medido 2026-11-26)
 
@@ -915,11 +928,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-27, depois do par `artifact-manifest` +
-  `red-as-expected-artifact-manifest`):**
-  `_main\_audit-verify-all.cmd` = **455291 B**, **5188 CRLF** / 0 bare LF,
-  sha256 `E4648712815CC8FB6965437EB7EFA3022DA4E26161A1FDA4C6261EA051249BCB`.
+- **PIN do ficheiro (re-medido 2026-11-27, depois dos pares `artifact-manifest` e
+  `unreferenced-census`):**
+  `_main\_audit-verify-all.cmd` = **456529 B**, **5201 CRLF** / 0 bare LF,
+  sha256 `B70AD32D2AC48806CA445D9D9E57FD911DF359E26BF7A30EC117344578DF42FF`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
+  (O par de 2026-11-27 mais recente julga o CENSO DE ORFAOS
+  `_main/unreferenced-oracle-census.py` + `--neg-arm`: o numero "203 scripts
+  sem chamador" era impressao sem instrumento e hoje e' uma contagem por
+  evidencia real -- GATED 318 / REFERENCED 154 / DOCUMENTED 151 / ORPHAN 161 de
+  784, com dois mutantes de CLASSIFICADOR a ficarem vermelhos. Nada e' apagado
+  por esse passo.)
   (O par de 2026-11-27 julga a TABELA DE ARTEFACTOS: o instrumento da frota so'
   reprova OVER e TRUNCATED, logo uma familia `roots` inexistente imprimia EMPTY com
   rc 0 e duas familias sobrepostas somavam o mesmo byte duas vezes -- medido nesta

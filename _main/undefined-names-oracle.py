@@ -45,6 +45,7 @@ ROOT = os.path.dirname(HERE)
 #: vermelho la' nao e' um defeito do produto.
 POPULATION = (
     'app/webview/sotto_webview.py',
+    'app/webview/display_geometry.py',
     'app/webview/caption_overlay.py',
     'app/webview/overlay_paint.py',
     'app/webview/bridge_census.py',

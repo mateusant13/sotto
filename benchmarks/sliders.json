@@ -1,6 +1,6 @@
 {
-  "schema": "revival.sliders/v1",
-  "updated_at": "2026-11-27T07:56:08Z",
+  "schema": "revival.sliders/v2",
+  "updated_at": "2026-11-27T11:04:05Z",
   "scale_0_100": [
     {
       "id": "delivery_balance",
@@ -10,7 +10,26 @@
       "target": 85,
       "counterpart": "Gate rigor & hygiene",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/landing_ratio_check.py --repo . --balance-score",
-      "evidence": "measured 2026-11-27: landing_ratio_check --balance-score -> 88, band Product-Led, verdict HEALTHY; sub-scores ratio 28 (29/40 product commits, audited by hand: the 11 meta ones are docs/receipts/revival ledgers), telemetry 25, hygiene 20 (rulebook_lean now measures whether the history lives elsewhere: docs/AGENTS-archive-* has 3000+ lines vs 1299 in AGENTS.md), cadence 15; the repaired rule proved in three directions -- lean 200 -> 20, router+archive -> 20, fat 1299 without archive -> 10"
+      "evidence": "measured 2026-11-27: landing_ratio_check --balance-score -> 88, band Product-Led, verdict HEALTHY; sub-scores ratio 28 (29/40 product commits, audited by hand: the 11 meta ones are docs/receipts/revival ledgers), telemetry 25, hygiene 20 (rulebook_lean now measures whether the history lives elsewhere: docs/AGENTS-archive-* has 3000+ lines vs 1299 in AGENTS.md), cadence 15; the repaired rule proved in three directions -- lean 200 -> 20, router+archive -> 20, fat 1299 without archive -> 10",
+      "rubric": {
+        "measurement": "Count product changes in the last 20 non-merge commits by inspecting their shipped behavior. Keep product tests and mandatory protections in the measured window.",
+        "anchors": {
+          "60": "50% product commits",
+          "70": "60% product commits",
+          "80": "70% product commits",
+          "90": "80% product commits (4:1)",
+          "100": "90% product commits and remaining infrastructure changes tied to measured product blockers"
+        },
+        "falsifier": "Git history and diff classification for the same 20-commit window."
+      },
+      "levels": {
+        "60": "Product commits >= 50% of recent history; meta drift noticed manually.",
+        "70": "Product commits >= 65%; meta scripts separated from feature PRs.",
+        "80": "Product commits >= 75% (~3:1) with landing_ratio_check measured.",
+        "90": "Product commits >= 80% (>=4:1 Product-Led) verified mechanically on recent window.",
+        "100": "Sustained >=85-90% product commits with zero meta-hijack streaks and all infra decoupled to async/nightly."
+      },
+      "why_not_100": "reasoned 2026-11-27: score 78 by landing_ratio_check's own formula -- s_ratio 28 (29/40 = 72.5% product; >=80% is 32/40 and each new product commit pushes an equally product commit out of the fixed 40-window) + s_telemetry 25 + s_hygiene 10 (dirty 7 > 5) + s_cadence 15. Not 100 because the ratio and the dirty ceiling are the two live gates."
     },
     {
       "id": "observability",
@@ -20,7 +39,26 @@
       "target": 90,
       "counterpart": "Runtime overhead (<2%)",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_verify.py --repo . --json",
-      "evidence": "measured 2026-11-27: 10/10 revival rails emit verdict+wall_s; 442 'call :expectred' battery steps; 154 distinct 'reason=' refusal tokens across app/+worker/; 36 'CANNOT-MEASURE why=' sites name the missing population; stall-attr answers HOST / SHELL-ONLY / HOST-IDLE from two processes' clocks; sim_memory gate payload carries problems/attempts/failed_attempts_preserved"
+      "evidence": "measured 2026-11-27: 10/10 revival rails emit verdict+wall_s; 442 'call :expectred' battery steps; 154 distinct 'reason=' refusal tokens across app/+worker/; 36 'CANNOT-MEASURE why=' sites name the missing population; stall-attr answers HOST / SHELL-ONLY / HOST-IDLE from two processes' clocks; sim_memory gate payload carries problems/attempts/failed_attempts_preserved",
+      "rubric": {
+        "measurement": "Inject one representative fault into each real Sotto stage: YouTube CDP caption read (app/webview/youtube_cdp_source.py), cue-to-paint (app/webview/caption_overlay.py), Alt+C gesture (app/webview/hotkey_gesture.py), shared audio capture (worker/capture_share.py), history merge (sotto_webview.py history_append), worker ASR + diarizer (worker/sotto_worker.py, worker/speaker_sidecar.py). Count the stages that answer with a typed outcome, a phase timing and an explicit missing-source line, and compare against the same successful path at <=2% of the shell's CPU.",
+        "anchors": {
+          "60": "40% of stages emit a typed outcome",
+          "70": "60% emit an outcome and phase timing",
+          "80": "80% expose failure and timing",
+          "90": "100% expose outcomes in one external report.json",
+          "100": "All also preserve fault attribution on failure, retry and an unavailable collector"
+        },
+        "falsifier": "python _main/stall-attr.py --log _main/webview-run.log must keep separating HOST from SHELL-ONLY on a session where each injected fault appears; a stage that goes silent without a named line is the counter-example."
+      },
+      "levels": {
+        "60": "Basic stdout lines on error; a freeze needs manual reproduction to locate the stage.",
+        "70": "Named reason= lines on the shell entrypoints and partial phase timing (YOUTUBE_TICK_MS, CAPTION_TICK_COST).",
+        "80": "Every stage names its outcome in _main/webview-run.log and a reader answers from the log alone (product-soak-oracle, yt-diag-truth-oracle).",
+        "90": "Per-stage outcomes + p50/p95 timings + zero silent-catch paths + a third-party clock (app/webview/stall_heartbeat.py) that separates HOST from SHELL-ONLY.",
+        "100": "End-to-end correlated telemetry across every stage and subprocess with <2% shell overhead and instant root-cause attribution."
+      },
+      "why_not_100": "reasoned 2026-11-27: 10/10 rails and 154 reason= tokens are measured, but the in-flight read is still unbounded: the 2026-11-26 session logged EXTERNAL_CAPTIONS_READ_MS painted=15906 track=16422 and the 4 Hz loop fell to 0.1-1.5 Hz. Until a per-stage budget bounds that read on every path, one stage can go silent without naming itself."
     },
     {
       "id": "inner_loop_speed",
@@ -30,7 +68,26 @@
       "target": 90,
       "counterpart": "Live calibration freshness",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_verify.py --repo . --json",
-      "evidence": "measured 2026-11-27 caged: fail_fast --gate 0.54s, feature_map --gate 1.9s, friction --gate 8.2s, benchmark 5 metrics 76s, nemotron --neg-arm 60.8->20.5s (17/17 caught). Playbook's three mechanisms green."
+      "evidence": "measured 2026-11-27 caged: fail_fast --gate 0.54s, feature_map --gate 1.9s, friction --gate 8.2s, benchmark 5 metrics 76s, nemotron --neg-arm 60.8->20.5s (17/17 caught). Playbook's three mechanisms green.",
+      "rubric": {
+        "measurement": "Measure p95 edit-to-verdict over at least 10 warm runs on each revision using the offline YouTube twin (_main/yt-capture-replay-oracle.py over the recorded fixtures) and _main/product-soak-oracle.py --minutes 0 over the owner's last session. Hold input, cache policy and host-pressure band fixed.",
+        "anchors": {
+          "60": "<=60 s",
+          "70": "<=30 s",
+          "80": "<=20 s",
+          "90": "<=15 s with no live dependency in smoke",
+          "100": "<=5 s with verified stale-fixture refusal and live calibration outside smoke"
+        },
+        "falsifier": "Timed main/HEAD smoke output plus the derived adverse epochs E1 (5.9 s stale photo), E2 (paused flag with clock_rate=0.58) and E3 (a 1.0 s rewind below SEEK_BACK_S); each must still resolve the old way."
+      },
+      "levels": {
+        "60": "A smoke run needs the live app and takes minutes.",
+        "70": "An offline twin answers the clock question but not the paint question.",
+        "80": "Twin + product soak both run offline in under 20 s.",
+        "90": "Both run in <=15 s from fixtures alone, with no live dependency, and the adverse epochs are exercised.",
+        "100": "<=5 s with verified stale-fixture refusal and live calibration outside the smoke."
+      },
+      "why_not_100": "reasoned 2026-11-27: the offline twin runs in 308-519 ms and the product soak in seconds, but a live YouTube judgement still needs a signed-in browser session, so the measured figure covers the offline half only."
     },
     {
       "id": "architecture_coherence",
@@ -40,7 +97,26 @@
       "target": 85,
       "counterpart": "Migration blast radius",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/blast_radius_map.py build --repo .",
-      "evidence": "measured 2026-11-27: RULER CORRECTION, not an improvement -- the 70 baseline was the bootstrap placeholder (never measured under the v4.1 criteria); first measured value is 60 (blast_radius 1833 files/342 edges, sync-budgets 0 changes, feature_map 0 unmapped, dead-unwired PASS) with two criteria unmet: the 35k-line sotto_webview.py is unsplit and ~203 unreferenced _main/*.py are not deleted. 45 -> 60 is today's real movement."
+      "evidence": "measured 2026-11-27: RULER CORRECTION, not an improvement -- the 70 baseline was the bootstrap placeholder (never measured under the v4.1 criteria); first measured value is 60 (blast_radius 1833 files/342 edges, sync-budgets 0 changes, feature_map 0 unmapped, dead-unwired PASS) with two criteria unmet: the 35k-line sotto_webview.py is unsplit and ~203 unreferenced _main/*.py are not deleted. 45 -> 60 is today's real movement.",
+      "rubric": {
+        "measurement": "Trace the production callers of each real Sotto stage: YouTube CDP caption read (app/webview/youtube_cdp_source.py), cue-to-paint (app/webview/caption_overlay.py), Alt+C gesture (app/webview/hotkey_gesture.py), shared audio capture (worker/capture_share.py), history merge (sotto_webview.py history_append), worker ASR + diarizer (worker/sotto_worker.py, worker/speaker_sidecar.py). Count stage ownership, single state authority and exercised fallback paths, and check the trace against features/INDEX.md.",
+        "anchors": {
+          "60": "60% traced to the consumer",
+          "70": "70% traced with explicit owner",
+          "80": "80% traced with one authority per shared state",
+          "90": "100% of named stages traced with ownership and fallback identified",
+          "100": "All traced normal and fallback paths are exercised and incompatible state writers are excluded"
+        },
+        "falsifier": "Drive each declared fallback once (CDP source -> UIA source, loopback -> process loopback -> PortAudio, nemotron live -> parakeet redux) and confirm features/INDEX.md names the same owner as the code."
+      },
+      "levels": {
+        "60": "60% of the named stages traced to their consumer.",
+        "70": "70% traced, each with one explicit owner module.",
+        "80": "80% traced with one authority per shared state (the pause mirror has exactly one writer).",
+        "90": "100% of the named stages traced with ownership and fallback identified, and no monolith holds more than its own stage.",
+        "100": "All traced normal and fallback paths exercised, and incompatible state writers excluded by a gate."
+      },
+      "why_not_100": "reasoned 2026-11-27: the score is arithmetic, not effort. arch = 100 - min(40, int(pct*4.5 + min(cnt,10)*1.5)) and 13 monoliths of 162 files already caps the penalty at exactly 40, so score 60. Reaching 90 needs monolith_count <= 2: 11 files must shrink below the 20k-char threshold, and the next candidate (sotto_worker.py, 10,230 lines) is a 10k-line split. The S1 display-geometry extraction (341 lines) and docs/ARCHITECTURE.md moved this slider by zero, as the formula predicts."
     },
     {
       "id": "metric_gate_coverage",
@@ -50,7 +126,26 @@
       "target": 90,
       "counterpart": "Gate wall time (<60s)",
       "proof_cmd": "python I:/!watcher/scripts/benchmark_history.py run --repo . --label verify-gate --samples 3 --gate --verify-red --no-record",
-      "evidence": "measured 2026-11-27: 6/6 metrics report red_arm.verified=true and the gate run returns rc 0 failures [] after repairing _perturbed_answer (wall_ms hands ceiling*2, regex builds and re-parses its own candidate, zero ceiling perturbs to 1); selftest grew 5 -> 9 arms; the previous CANNOT-FALSIFY for all five timing metrics is gone, and a perturbed answer the ceiling cannot violate still answers FALSE-GREEN instead of passing"
+      "evidence": "measured 2026-11-27: 6/6 metrics report red_arm.verified=true and the gate run returns rc 0 failures [] after repairing _perturbed_answer (wall_ms hands ceiling*2, regex builds and re-parses its own candidate, zero ceiling perturbs to 1); selftest grew 5 -> 9 arms; the previous CANNOT-FALSIFY for all five timing metrics is gone, and a perturbed answer the ceiling cannot violate still answers FALSE-GREEN instead of passing",
+      "rubric": {
+        "measurement": "Count the required benchmarks/budgets.json metrics that cover a real Sotto stage (YouTube CDP caption read (app/webview/youtube_cdp_source.py), cue-to-paint (app/webview/caption_overlay.py), Alt+C gesture (app/webview/hotkey_gesture.py), shared audio capture (worker/capture_share.py), history merge (sotto_webview.py history_append), worker ASR + diarizer (worker/sotto_worker.py, worker/speaker_sidecar.py)) with an executable check and a failing arm, including the end-to-end path. Keep the fast gate within 60 s.",
+        "anchors": {
+          "60": "60% of metric rows have checks",
+          "70": "70% of metric rows have checks",
+          "80": "80% of metric rows have checks",
+          "90": "All required rows have executable checks and failing arms",
+          "100": "All also reject malformed, missing and stale evidence inside the gate-time budget"
+        },
+        "falsifier": "Match each budget row to its check output plus an injected regression, and time the gate; a row whose check cannot fail is not covered."
+      },
+      "levels": {
+        "60": "Basic smoke metrics recorded once in benchmarks/history.jsonl.",
+        "70": "Basic + subsystem budgets defined with ceilings in benchmarks/budgets.json.",
+        "80": "Automated budget gate runs on PR/commit with baseline->after comparison.",
+        "90": "Basic->subsystem->E2E I/O budgets with tight ceilings, verified RED arms (--verify-red), and blast-radius callers.",
+        "100": "100% of core I/O surfaces covered by paired main-vs-HEAD metric budgets with proven falsifiers and <60s total gate wall."
+      },
+      "why_not_100": "reasoned 2026-11-27: every required budget row has an executable check and a failing arm on the stages I measured, but E2E correctness still reads null (no signed-in YouTube session), so the end-to-end row is a HOLE, not a pass."
     },
     {
       "id": "harness_falsifiers",
@@ -60,7 +155,26 @@
       "target": 85,
       "counterpart": "Maintenance burden",
       "proof_cmd": "python _main/yt-capture-replay-oracle.py --neg-arm",
-      "evidence": "measured 2026-11-27: harness/angles.tsv 34 rows 0 HOLE; offline twin fixtures/yt-paint-freeze-20261104.json (745 samples) drives 43 product arms; every checked feature answers with a command plus a red arm."
+      "evidence": "measured 2026-11-27: harness/angles.tsv 34 rows 0 HOLE; offline twin fixtures/yt-paint-freeze-20261104.json (745 samples) drives 43 product arms; every checked feature answers with a command plus a red arm.",
+      "rubric": {
+        "measurement": "Count every applicable harness/angles.tsv combination across Sotto's own features (codebase, youtube-caption, altc-gesture, audio-capture, caption-pipeline, history, feature). A combination counts only when both a passing arm and a failing arm were observed.",
+        "anchors": {
+          "60": "60% of applicable combinations",
+          "70": "70% of applicable combinations",
+          "80": "80% of applicable combinations",
+          "90": "90% with recovery, timeouts and steady-state cases exercised",
+          "100": "100% including failure injection into the evaluator"
+        },
+        "falsifier": "Match harness receipts to the declared combinations and inspect every exclusion; a cell whose neg arm cannot go red is a HOLE, not a pass."
+      },
+      "levels": {
+        "60": "Example-based unit tests pass on happy paths.",
+        "70": "Regression tests cover past bugs + key error paths.",
+        "80": "Feature x Angle harness covers majority of angles with explicit RED controls.",
+        "90": "All applicable Feature x Angle rows covered (0 silent HOLEs, manual-audit fallback on CANNOT-MEASURE/FAIL) with proven RED arms.",
+        "100": "Mutation-verified falsifiers across all 24 angles (steady-state decay, chaos/restart, concurrency, boundary invariants) with zero false greens."
+      },
+      "why_not_100": "reasoned 2026-11-27: harness/angles.tsv covers 7 features with passing and failing arms, but harness/twins/ holds only README.md, so the twin column is a named HOLE rather than exercised calibration."
     },
     {
       "id": "reversibility_safety",
@@ -70,7 +184,26 @@
       "target": 95,
       "counterpart": "Staging step friction",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py --selftest",
-      "evidence": "measured 2026-11-27: checkpoints 3 (newest post-v420-sliders-20261127, HEAD fd41e446e1, 88.9 MB bundle, 'git bundle verify' -> records a complete history / is okay); worktrees are the lane default and the seat merges only after git cat-file -e <sha>^{commit}; ROLLBACK is proven by the tool's own selftest (git_checkpoint.py --selftest -> {\"selftest\": \"PASS\", \"arms\": 5}), so snapshot/diff/rollback all execute, not just snapshot"
+      "evidence": "measured 2026-11-27: checkpoints 3 (newest post-v420-sliders-20261127, HEAD fd41e446e1, 88.9 MB bundle, 'git bundle verify' -> records a complete history / is okay); worktrees are the lane default and the seat merges only after git cat-file -e <sha>^{commit}; ROLLBACK is proven by the tool's own selftest (git_checkpoint.py --selftest -> {\"selftest\": \"PASS\", \"arms\": 5}), so snapshot/diff/rollback all execute, not just snapshot",
+      "rubric": {
+        "measurement": "Count the risky changes in the active wave that touch the caption-engine handoff (nemotron live -> parakeet redux) and an interrupted worker or sidecar restart. Proof requires a positive rehearsal plus an interrupted or disabled arm with durable state intact.",
+        "anchors": {
+          "60": "60% of risky changes have rehearsed recovery",
+          "70": "70% covered",
+          "80": "80% covered",
+          "90": "All risky changes have rehearsed rollback and off-arm proof",
+          "100": "All also recover after interruption without lost durable state or duplicate work"
+        },
+        "falsifier": "Rehearse the rollback or the off-arm on disposable data and compare the resulting state with its checkpoint."
+      },
+      "levels": {
+        "60": "Clean git history with manual rollback possible.",
+        "70": "Pre-wave git checkpoints created before large refactors.",
+        "80": "Isolated worktrees + checkpoints + explicit kill-switch on major runtime shifts.",
+        "90": "Pre-wave checkpoints + isolated worktrees + env kill-switches (off-arm tested) + atomic rollback-on-red landing.",
+        "100": "Every behavioral/schema/runtime shift is instant-reversible with dual-arm automated proof and zero-data-loss recovery drills."
+      },
+      "why_not_100": "reasoned 2026-11-27: checkpoints, worktrees and git_checkpoint --selftest (5 arms) are proven, but the interrupted-worker arm has not been rehearsed on the owner's live instance; that arm stays fixed, NOT verified until he restarts."
     },
     {
       "id": "autonomy_end_to_end",
@@ -80,7 +213,26 @@
       "target": 95,
       "counterpart": "Safety boundary discipline",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_verify.py --repo . --json",
-      "evidence": "measured 2026-11-27: every test class in the repo's own matrix runs lane-side (10/10 revival rails, 9-arm benchmark selftest, 5-arm checkpoint selftest, 43-arm offline YouTube twin) and this session landed 7 commits with zero owner action; the six points kept are a named fixture hole, not a harness dependency: a live YouTube playback session needs a Google login a lane cannot create, so YouTube-side changes are invisible to the lane until someone logs in"
+      "evidence": "measured 2026-11-27: every test class in the repo's own matrix runs lane-side (10/10 revival rails, 9-arm benchmark selftest, 5-arm checkpoint selftest, 43-arm offline YouTube twin) and this session landed 7 commits with zero owner action; the six points kept are a named fixture hole, not a harness dependency: a live YouTube playback session needs a Google login a lane cannot create, so YouTube-side changes are invisible to the lane until someone logs in",
+      "rubric": {
+        "measurement": "Count the real Sotto stages (YouTube CDP caption read (app/webview/youtube_cdp_source.py), cue-to-paint (app/webview/caption_overlay.py), Alt+C gesture (app/webview/hotkey_gesture.py), shared audio capture (worker/capture_share.py), history merge (sotto_webview.py history_append), worker ASR + diarizer (worker/sotto_worker.py, worker/speaker_sidecar.py)) that a lane launch runs in a bounded, owned environment with no owner input. YouTube playback is counted only where a browser session exists; without one the lane reports CANNOT-MEASURE reason=youtube-login-required and that half is a named HOLE.",
+        "anchors": {
+          "60": "60% of stages run unaided",
+          "70": "70% run unaided",
+          "80": "80% run unaided",
+          "90": "100% of core stages run unaided on real or calibrated recorded-session inputs",
+          "100": "Core and recovery stages run unaided and fail explicitly for stale or missing evidence"
+        },
+        "falsifier": "Run the supported lane entrypoint (SOTTO_LANE_LAUNCH=1 + _main/keepalive.py on its own port) with success, failure and recovery inputs, then judge with _main/product-soak-oracle.py."
+      },
+      "levels": {
+        "60": "Agent can build and run unit tests without human clicks.",
+        "70": "Agent can run integration/smoke verification locally using fixtures.",
+        "80": "Offline twins replace most manual UI/external checks; single verify command exists.",
+        "90": "Zero owner-tab/manual-click inner-loop dependencies, fail_fast_audit PASS, one-command revival_verify PASS, autonomous wave execution.",
+        "100": "Fully self-verifying, self-healing end-to-end pipeline where agents detect, diagnose, fix, prove, and land changes with zero owner babysitting."
+      },
+      "why_not_100": "reasoned 2026-11-27: a lane launch covers attach, snapshot parsing, the pause/seek/clock rules and the read envelope, but YouTube playback answers LOGIN_REQUIRED in a signed-out profile (readyState 0, empty streamingData, 26 caption tracks over 3 videos), so the playback half is CANNOT-MEASURE reason=youtube-login-required and the last point stays unreachable without a burner login."
     }
   ],
   "natural_unit_pairs": [

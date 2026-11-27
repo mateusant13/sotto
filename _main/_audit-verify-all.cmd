@@ -4726,6 +4726,19 @@ if exist _main\artifact-manifest-oracle.py (
   call :step red-as-expected-artifact-manifest 1 "_main\artifact-manifest-oracle.py" "%OUT%\artifact-manifest-neg.log" python _main\artifact-manifest-oracle.py --neg-arm
   call :expectred red-as-expected-artifact-manifest !STEP_RC! "%OUT%\artifact-manifest-neg.log" "NEG-ARM PASS"
 ) else ( call :record artifact-manifest MISSING & call :expectred red-as-expected-artifact-manifest MISSING "%OUT%\artifact-manifest-neg.log" "NEG-ARM PASS" )
+REM O CENSO DE ORFAOS (2026-11-27): o numero "203 scripts sem chamador" era uma
+REM impressao sem instrumento. `_main/unreferenced-oracle-census.py` classifica
+REM TODO `_main/*.py` pela evidencia real (bateria > import/chamada > docs/config)
+REM e imprime a contagem por veredicto; o `--neg-arm` conduz dois mutantes de
+REM CLASSIFICADOR (bateria desligada, lookup de codigo universal) e nenhum deles
+REM toca no produto. Nada e' apagado por este passo -- ele so' mede.
+REM Custo medido: 7,3 s o positivo, 1,5 s o negativo.
+if exist _main\unreferenced-oracle-census.py (
+  call :step unreferenced-census 0 "_main\unreferenced-oracle-census.py" "%OUT%\unreferenced-census.log" python _main\unreferenced-oracle-census.py
+  call :record unreferenced-census !STEP_RC!
+  call :step red-as-expected-unreferenced-census 1 "_main\unreferenced-oracle-census.py" "%OUT%\unreferenced-census-neg.log" python _main\unreferenced-oracle-census.py --neg-arm
+  call :expectred red-as-expected-unreferenced-census !STEP_RC! "%OUT%\unreferenced-census-neg.log" "NEG-ARM: PASS"
+) else ( call :record unreferenced-census MISSING & call :expectred red-as-expected-unreferenced-census MISSING "%OUT%\unreferenced-census-neg.log" "NEG-ARM: PASS" )
 echo.
 echo =============== BATTERY SUMMARY ===============
 echo steps    : !N!   gate=!GATES!  control=!CTRLS!  skipped=!SKIPN!  expect-red=!REDS!  missing=!MISSINGN!  cached=!CACHEDN!

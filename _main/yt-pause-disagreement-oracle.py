@@ -334,7 +334,35 @@ def neg_arm(clock, shell_src):
         okd, _ = arm_freshness(mutated)
         caught.append((label, not okd))
         print('NEG-ARM %s %s' % (label, 'CAUGHT' if not okd else 'NOT-CAUGHT'))
-    return all(c for _, c in caught) and len(caught) == 7
+    # e-log: muta o CLASSIFICADOR DE DANO -- primeiro volta a regra antiga (que
+    # acusava a convergencia), depois apaga o casamento por `t`.
+    global PAUSE_BLANK, PAUSE_EVENT
+    _save_blank, _save_event = PAUSE_BLANK, PAUSE_EVENT
+    try:
+        # M_e1: sem ler o APAGAR, todo `PROVEN` adjacente a um `DISAGREED` conta
+        # -- e' exactamente a regra de 2026-11-26 que acusava 9 vezes a sessao
+        # dele com ZERO apagar.
+        PAUSE_BLANK = re.compile(r'NEVER-MATCHES-A-BLANK')
+        oke1, _ = arm_log_harm()
+        caught.append(('e-volta-a-regra-antiga', not oke1))
+        print('NEG-ARM e-volta-a-regra-antiga %s'
+              % ('CAUGHT' if not oke1 else 'NOT-CAUGHT'))
+    finally:
+        PAUSE_BLANK, PAUSE_EVENT = _save_blank, _save_event
+    global T_MATCH_S
+    _save_t = T_MATCH_S
+    try:
+        # M_e2: uma tolerancia enorme deixa de distinguir a pausa desmentida da
+        # convergencia -- o dano real passa a ser invisivel e o legitimo passa a
+        # ser acusado. E' o mutante do numero, nao da estrutura.
+        T_MATCH_S = 1e9
+        oke2, _ = arm_log_harm()
+        caught.append(('e-cego-ao-carimbo', not oke2))
+        print('NEG-ARM e-cego-ao-carimbo %s'
+              % ('CAUGHT' if not oke2 else 'NOT-CAUGHT'))
+    finally:
+        T_MATCH_S = _save_t
+    return all(c for _, c in caught) and len(caught) == 9
 
 
 def log_verdict(path, since=None):
@@ -373,29 +401,13 @@ def log_verdict(path, since=None):
             if 'SHELL_STARTUP_STAGE' in line and 'stage=pre-lock' in line:
                 start = n
     lines = lines[start:]
-    pat = re.compile(r'YOUTUBE_PAUSE_(DISAGREED|PROVEN)\b.*?t=([0-9.]+)'
-                     r'.*?vid=(\S+)')
-    seen, bad = [], []
-    for n, line in enumerate(lines):
-        m = pat.search(line)
-        if not m:
-            continue
-        seen.append((n, m.group(1), m.group(2), m.group(3)))
-    for n, kind, t, vid in seen:
-        if kind != 'PROVEN':
-            continue
-        for n2, kind2, t2, vid2 in seen:
-            if kind2 != 'DISAGREED' or abs(n2 - n) > 5 or vid2 != vid:
-                continue
-            if abs(float(t2) - float(t)) <= 0.05:
-                bad.append((n, t, vid))
-                break
-    if not seen:
+    count = judge_log(lines, since_line=start)
+    if count is None:
         print('YT-PAUSE-LOG CANNOT-MEASURE reason=no-pause-lines lines=%d' % len(lines))
         return 3
-    fam = read_pause_episodes(lines)
-    print('YT-PAUSE-LOG episodes=%d contradicted=%d lines=%d'
-          % (sum(1 for s in seen if s[1] == 'PROVEN'), len(bad), len(lines)))
+    episodes, bad, settle, fam = count
+    print('YT-PAUSE-LOG episodes=%d contradicted=%d settled=%d lines=%d'
+          % (episodes, len(bad), settle, len(lines)))
     print('YT-PAUSE-LOG families=' + ' '.join(
         '%s=%d' % (k, fam[k]) for k in
         ('PROVEN', 'DISAGREED', 'STALE_PHOTO', 'UNWITNESSED', 'BLANK_DEFERRED')
@@ -404,8 +416,139 @@ def log_verdict(path, since=None):
         print('  CONTRADICTED line=%d t=%s vid=%s' % (n + 1, t, vid))
     print('YT-PAUSE-LOG VERDICT: %s%s'
           % ('CLEAN' if not bad else 'CONTRADICTED',
-             '' if not bad else ' -- a blank was decided against the same measurement'))
+             '' if not bad else
+             ' -- a blank was decided against the same measurement'))
     return 0 if not bad else 1
+
+
+#: A UNICA COISA QUE ESTE ORACULO PODE CHAMAR DE DANO E' O APAGAR.
+PAUSE_BLANK = re.compile(r'CAPTION_WINDOW_BLANKED reason=youtube-paused\S*')
+PAUSE_EVENT = re.compile(r'YOUTUBE_PAUSE_(DISAGREED|PROVEN)\b.*?t=([0-9.]+)'
+                         r'.*?vid=(\S+)')
+
+#: Quanto dois carimbos de posicao tem de concordar para serem a MESMA medida.
+#: Duas fotos vizinhas a 4 Hz diferem ate' 0,25 s (o proprio piso curto do
+#: `CLOCK_STATIC_PAUSE_FLAG_S`); a tolerancia e' 5x menor, porque o que se
+#: procura e' a MESMA posicao lida duas vezes, nao uma posicao proxima.
+T_MATCH_S = 0.05
+
+
+def judge_log(lines, since_line=0):
+    """Conta as contradicoes REAIS. Devolve `None` quando nao ha' linha de pausa.
+
+    O QUE ESTAVA ERRADO, e o numero que o condenou (medido 2026-11-26, sobre o
+    `_main/webview-run.log` inteiro, 284 010 linhas). A regra antiga chamava
+    contradicao a QUALQUER `YOUTUBE_PAUSE_PROVEN` a menos de 5 linhas de um
+    `YOUTUBE_PAUSE_DISAGREED` com o mesmo `t` e o mesmo video: **32 episodios**
+    no ficheiro e **9 na ultima sessao do dono**. Mas nessa sessao havia
+    **UM** `CAPTION_WINDOW_BLANKED reason=youtube-paused` em 23 395 linhas --
+    as 11:46:37.979, armado pelo `PROVEN held_s=0.5 t=2.85` das :37.978, com o
+    `RESUMED` a chegar 13 linhas depois. **Zero** dano. A regra antiga estava a
+    acusar a CONVERGENCIA de uma pausa verdadeira:
+
+        a 1a foto ainda andava  -> `pause_proven` recusa  -> DISAGREED
+        a 2a foto ja' esta' parada -> `pause_proven` prova -> PROVEN
+
+    Isso e' o algoritmo a funcionar, nao a falhar. Um portao que acusa o
+    caminho certo perde a autoridade (AGENTS.md: "um portao que acusa quem esta'
+    certo perde a autoridade"), e este acusava 9 vezes por sessao para sempre.
+
+    A PERGUNTA CERTA E' A DO DONO: *"quando eu despausei ainda nao funcionava"*.
+    O dano e' o ECRAN APAGADO -- `CAPTION_WINDOW_BLANKED reason=youtube-paused*`
+    -- e so' quando o `PROVEN` que o armou pertence a um episodio que a MESMA
+    regra desmentiu (`DISAGREED`, mesmo `t` a 0.05 s, mesmo video, a menos de 8
+    linhas). Medido com esta regra sobre o ficheiro inteiro: **10** episodios,
+    o ultimo a 2026-11-26 02:38:10 -- todos ANTERIORES ao fix que introduziu
+    `photo_fresh` no `pause_proven`. Na sessao de 2026-11-26 11:45 (o codigo
+    corrigido): **0**. Uma regra que nao sabe ficar verde num log corrigido
+    nao prova o fix; uma que nao sabe ficar vermelha no log antigo nao prova
+    nada. Esta e' conduzida nas duas direcoes por `arm_log_harm`.
+    """
+    events = []
+    for n, line in enumerate(lines):
+        m = PAUSE_EVENT.search(line)
+        if m:
+            events.append((n, m.group(1), float(m.group(2)), m.group(3)))
+    if not events:
+        # SEM NENHUM EVENTO DE PAUSA NAO HA' MEDIDA -- e ausencia de medida nao
+        # vira veredicto (nem verde nem vermelho).
+        return None
+    by_line = {e[0]: e for e in events}
+    bad = []
+    for n, line in enumerate(lines):
+        if not PAUSE_BLANK.search(line):
+            continue
+        armed = None
+        for j in range(n, max(0, n - 14), -1):
+            hit = by_line.get(j)
+            if hit is not None and hit[1] == 'PROVEN':
+                armed = hit
+                break
+        if armed is None:
+            continue
+        j0, _kind, t, vid = armed
+        for k in range(max(0, j0 - 8), j0 + 1):
+            hit = by_line.get(k)
+            if (hit is not None and hit[1] == 'DISAGREED'
+                    and hit[3] == vid
+                    and abs(hit[2] - t) <= float(T_MATCH_S)):
+                bad.append((n, '%.2f' % t, vid))
+                break
+    settle = 0
+    for n, kind, t, vid in events:
+        if kind != 'PROVEN':
+            continue
+        for n2, kind2, t2, vid2 in events:
+            if (kind2 == 'DISAGREED' and vid2 == vid and abs(n2 - n) <= 5
+                    and abs(t2 - t) <= float(T_MATCH_S)):
+                settle += 1
+                break
+    episodes = sum(1 for e in events if e[1] == 'PROVEN')
+    return episodes, bad, settle, read_pause_episodes(lines)
+
+
+def arm_log_harm():
+    """e-log: o classificador de dano, conduzido nas DUAS direcoes.
+
+    Sem esta arm, a unica prova da regra era o log do dono -- um ficheiro que
+    so' cresce e que nunca fica vermelho de proposito. Aqui cada arm e' um
+    fixture sintetico do MESMO formato, mais o validador REAL (`judge_log`).
+    """
+    cases = [
+        (['YOUTUBE_PAUSE_DISAGREED paused_flag=True clock_rate=0.58 t=10.00 vid=A',
+          'YOUTUBE_PAUSE_PROVEN witness=flag+clock-static held_s=0.3 t=10.00 vid=A',
+          'CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=5 wanted=true'],
+         1, 'o dano: um apagar armado por uma pausa que o mesmo episodio desmentiu'),
+        (['YOUTUBE_PAUSE_DISAGREED paused_flag=True clock_rate=0.58 t=10.00 vid=A',
+          'YOUTUBE_PAUSE_PROVEN witness=flag+clock-static held_s=0.5 t=10.00 vid=A',
+          'CAPTION_PAINT_SURFACE src=player rows=1 text="x" ms=1 epoch=5'],
+         0, 'CONVERGENCIA (a cura): as duas testemunhas a concordar, nenhum apagar'),
+        (['YOUTUBE_PAUSE_PROVEN witness=flag+clock-static held_s=4.2 t=88.00 vid=A',
+          'CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=6 wanted=true'],
+         0, 'uma pausa VERDADEIRA (sem desmentido) continua a apagar'),
+        (['CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=2 wanted=true',
+          'YOUTUBE_PAUSE_DISAGREED paused_flag=True clock_rate=0.30 t=5.00 vid=A'],
+         0, 'o apagar nao pode ser armado pelo evento que vem DEPOIS dele'),
+        (['YOUTUBE_PAUSE_DISAGREED paused_flag=True clock_rate=0.30 t=5.00 vid=A',
+          'YOUTUBE_PAUSE_PROVEN witness=flag+clock-static held_s=0.3 t=9.00 vid=A',
+          'CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=3 wanted=true'],
+         1, 'o dano atravessa o carimbo? nao: `t` diferente nao e a mesma medida '
+            '-- o PROVEN de 9.00 nao tem desmentido e o apagar e legitimo'),
+    ]
+    bad = []
+    for lines, want, why in cases:
+        got = judge_log(lines)
+        if got is None:
+            bad.append('%s -> None' % why)
+            continue
+        n_bad = len(got[1])
+        # o ultimo caso e' o controle NEGATIVO do casamento por `t`: 0 e' o
+        # numero certo, e por isso o desejo dele e' 0 e nao 1.
+        expect = 0 if why.startswith('o dano atravessa') else want
+        if n_bad != expect:
+            bad.append('%s -> %d (quer %d)' % (why, n_bad, expect))
+    return (not bad), ('; '.join(bad) if bad
+                       else '%d fixtures no classificador REAL' % len(cases))
 
 
 def main(argv=None):
@@ -438,6 +581,9 @@ def main(argv=None):
     d, dd = arm_freshness(shell_src)
     print('[%s] d-frescura  o metodo REAL _yt_snap_fresh decide a foto do tick -- %s'
           % ('PASS' if d else 'FAIL', dd))
+    e, de = arm_log_harm()
+    print('[%s] e-log       o dano e o APAGAR, e so quando a mesma regra o desmentiu '
+          '-- %s' % ('PASS' if e else 'FAIL', de))
 
     if '--neg-arm' in argv:
         ok = neg_arm(clock, shell_src)
@@ -446,8 +592,8 @@ def main(argv=None):
         # Um neg-arm que sai 0 e' indistinguivel de um oraculo que nao julga.
         return 1 if ok else 0
 
-    green = a and b and c and d
-    print('YT-PAUSE-DISAGREEMENT VERDICT: %s (4 arms)' % ('GREEN' if green else 'RED'))
+    green = a and b and c and d and e
+    print('YT-PAUSE-DISAGREEMENT VERDICT: %s (5 arms)' % ('GREEN' if green else 'RED'))
     return 0 if green else 1
 
 
