@@ -917,8 +917,8 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
 
 - **PIN do ficheiro (re-medido 2026-11-26, depois do par `dm-triage` e dos seis passos da
   `project-revival`, e da linha `REVIVAL` apontada ao canonico 2026-11-26):**
-  `_main\_audit-verify-all.cmd` = **452874 B**, **5161 CRLF** / 0 bare LF,
-  sha256 `CA7A3E8A4CEE6037D0A9A2702D921EB8EEC088056BF0FD6983EBAEBAF4DB4600`.
+  `_main\_audit-verify-all.cmd` = **453801 B**, **5172 CRLF** / 0 bare LF,
+  sha256 `DD6F3F02F177540FF969BF4881F99FD3FD91610855D0220034E1B2D6AEBF692E`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e

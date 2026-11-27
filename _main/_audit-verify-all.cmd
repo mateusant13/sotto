@@ -4693,6 +4693,17 @@ if exist "%REVIVAL%\benchmark_history.py" (
   call :step benchmark-selftest 0 "%REVIVAL%\benchmark_history.py" "%OUT%\benchmark-selftest.log" python "%REVIVAL%\benchmark_history.py" --selftest
   call :record benchmark-selftest !STEP_RC!
 ) else ( call :record benchmark-gate MISSING & call :record benchmark-selftest MISSING )
+REM FAIL-FAST v4.1 (2026-11-27): o passo POSITIVO e o proprio auditor a julgar a
+REM arvore (`scan --repo . --gate`, rc 0); o par e o `--selftest` dele, que conduz 8
+REM arms com os fixtures vermelhos e verdes (rc 0 so quando os mutantes sao apanhados).
+REM Medido 2026-11-27 antes de ligar: scan --gate PASS com 0 achados (eram 41 em 21
+REM ficheiros) e --selftest PASS arms=8 em 0,5 s caged.
+if exist "%REVIVAL_SKILLS%\fail_fast_audit.py" (
+  call :step fail-fast 0 "%REVIVAL_SKILLS%\fail_fast_audit.py" "%OUT%\fail-fast.log" python "%REVIVAL_SKILLS%\fail_fast_audit.py" scan --repo . --gate
+  call :record fail-fast !STEP_RC!
+  call :step fail-fast-selftest 0 "%REVIVAL_SKILLS%\fail_fast_audit.py" "%OUT%\fail-fast-selftest.log" python "%REVIVAL_SKILLS%\fail_fast_audit.py" --selftest
+  call :record fail-fast-selftest !STEP_RC!
+) else ( call :record fail-fast MISSING & call :record fail-fast-selftest MISSING )
 if exist "%REVIVAL_SKILLS%\loop_friction_audit.py" (
   call :step friction-gate 0 "revival\FRICTION.json;%REVIVAL_SKILLS%\loop_friction_audit.py" "%OUT%\friction-gate.log" python "%REVIVAL_SKILLS%\loop_friction_audit.py" measure --repo . --gate
   call :record friction-gate !STEP_RC!
