@@ -1,6 +1,6 @@
 {
   "schema": "revival.friction/v1",
-  "updated_at": "2026-11-26T22:25:45Z",
+  "updated_at": "2026-11-27T00:16:20Z",
   "default_inner_loop_target_s": 15.0,
   "frictions": [
     {
@@ -17,9 +17,15 @@
       "solution_plan": "O verificador ANTIGO fazia `Path('.').rglob('*')` sobre 8,87 GiB e custava 15,068 s contra o proprio alvo de 8,0 s -- a verificacao ERA a friccao. O invariante e' outro e e' limitado: o loop interno nunca invoca `cargo`. Censo de 3 fontes declaradas, sem caminhada de arvore.",
       "twin_or_script": "nenhum: o portao e' um censo limitado (a .cmd + scripts/*.py + _main/*.cmd)",
       "verify_cmd": "python -c \"import pathlib,sys;paths=['_main/_audit-verify-all.cmd']+[str(x) for x in pathlib.Path('scripts').glob('*.py')]+[str(x) for x in pathlib.Path('_main').glob('*.cmd')];hit=[q for q in paths if 'cargo' in pathlib.Path(q).read_text(encoding='utf-8',errors='replace').lower()];print('cargo no loop interno:',hit);sys.exit(0 if not hit else 3)\"",
-      "after_s": 0.124,
+      "after_s": 0.129,
       "status": "VERIFIED",
-      "waiver_reason": "Os dois Cargo.toml (app/verify, _main/cargoprobe) sao scratch da era Tauri/Electron: app/verify/README.md diz \"NOT part of the app\" e o seu verify-run.log termina em \"Blocking waiting for file lock on package cache\". Nenhum .py/.cmd/.mjs do produto os invoca, logo nenhum inner loop do Sotto compila Rust -- e o proprio verify_cmd prova isso."
+      "waiver_reason": "Os dois Cargo.toml (app/verify, _main/cargoprobe) sao scratch da era Tauri/Electron: app/verify/README.md diz \"NOT part of the app\" e o seu verify-run.log termina em \"Blocking waiting for file lock on package cache\". Nenhum .py/.cmd/.mjs do produto os invoca, logo nenhum inner loop do Sotto compila Rust -- e o proprio verify_cmd prova isso.",
+      "load": {
+        "total": 69.6,
+        "busiest": 100.0,
+        "pinned": 4,
+        "starved": true
+      }
     },
     {
       "id": "friction.youtube_live_dep",
@@ -38,8 +44,14 @@
       "solution_plan": "MEDIDO 2026-11-26: o player foi capturado como BYTES (466 amostras a 50 ms, `_main/yt-snapshot-capture.py`) e reproduzido OFFLINE pelas funcoes PURAS do produto (43 arms, `_main/yt-capture-replay-oracle.py`). O twin cobre relogio/pausa/seek; o TEXTO da cue continua HOLE (exige sessao: 26 tracks deram 200 com 0 bytes sem login).",
       "twin_or_script": "_main/fixtures/yt-snapshot-dQw4w9WgXcQ-20261126-150842.json (+ _main/yt-capture-replay-oracle.py, _main/fixtures/yt-paint-freeze-20261104.json)",
       "verify_cmd": "python _main/yt-capture-replay-oracle.py",
-      "after_s": 0.306,
-      "status": "VERIFIED"
+      "after_s": 0.314,
+      "status": "VERIFIED",
+      "load": {
+        "total": 69.6,
+        "busiest": 100.0,
+        "pinned": 4,
+        "starved": true
+      }
     },
     {
       "id": "friction.browser_live_wait",
@@ -58,8 +70,14 @@
       "solution_plan": "A pintura e' medida FORA DO ECRA pelo layout do proprio produto (`app/webview/headless_paint.py`): 745 amostras reais do congelamento do dono, pior erro 12,133 ms contra 16,667 ms, bitmaps_disposed=109, janelas abertas=0.",
       "twin_or_script": "app/webview/headless_paint.py + _main/yt-headless-paint-oracle.py",
       "verify_cmd": "python _main/yt-headless-paint-oracle.py",
-      "after_s": 1.706,
-      "status": "VERIFIED"
+      "after_s": 2.047,
+      "status": "VERIFIED",
+      "load": {
+        "total": 69.6,
+        "busiest": 100.0,
+        "pinned": 4,
+        "starved": true
+      }
     },
     {
       "id": "friction.paid_or_live_api",
@@ -74,9 +92,15 @@
       "solution_plan": "Depends on live external LLM/API; add deterministic offline fixture + dry-run transport under harness/twins/.",
       "twin_or_script": "harness/twins/",
       "verify_cmd": "python -c \"import sys;t=open('app/webview/sotto_webview.py',encoding='utf-8').read();bad=[k for k in ('import requests','urllib.request','api.openai','api.anthropic') if k in t];print('live-api clients in the caption path', bad);sys.exit(0 if not bad else 3)\"",
-      "after_s": 0.104,
+      "after_s": 0.093,
       "status": "VERIFIED",
-      "waiver_reason": "O caminho de legenda e local (nemotron/parakeet + CDP do YouTube); rotas pagas so existem no routing de subagentes, fora do produto."
+      "waiver_reason": "O caminho de legenda e local (nemotron/parakeet + CDP do YouTube); rotas pagas so existem no routing de subagentes, fora do produto.",
+      "load": {
+        "total": 69.6,
+        "busiest": 100.0,
+        "pinned": 4,
+        "starved": true
+      }
     },
     {
       "id": "friction.inner_test_loop",
@@ -89,9 +113,15 @@
       "solution_plan": "MEDIDO: bateria completa 2391 s (caches frios, apos editar oraculos) contra 1080 s (caches quentes) -- a diferenca e' o cache por passo (576 linhas em `_cache/battery-steps.json`), nao um throttle. Loop de 15 s NAO provado para o produto; existe por passo (`--only`, `SOTTO_BATTERY_FAST=1`).",
       "twin_or_script": "_main/step-deadline.py --record-* / _cache/battery-steps.json",
       "verify_cmd": "python -c \"import json,sys;d=json.load(open('_cache/battery-steps.json',encoding='utf-8'));n=len(d['steps']);print('cached steps',n);sys.exit(0 if n>500 else 3)\"",
-      "after_s": 0.119,
+      "after_s": 0.09,
       "status": "VERIFIED",
-      "note": "O verify_cmd mede o CACHE (575+ linhas por passo), nunca larga a bateria: um gate de friccao que corre a bateria e ele proprio uma espera de 20 min."
+      "note": "O verify_cmd mede o CACHE (575+ linhas por passo), nunca larga a bateria: um gate de friccao que corre a bateria e ele proprio uma espera de 20 min.",
+      "load": {
+        "total": 69.6,
+        "busiest": 100.0,
+        "pinned": 4,
+        "starved": true
+      }
     },
     {
       "id": "friction.owner_dependency_audio_and_screen",
@@ -107,8 +137,14 @@
       "solution_plan": "Cada uma e' um HOLE NOMEADO (`CANNOT-MEASURE why=...`), nunca um pedido ao dono: texto de cue responde `no-caption-segment`; a frescura tem dono declarado (`yt-pause-disagreement-oracle`); o Bend sai `BEND-GATE SKIPPED: NOT INSTALLED` (rc 0) e esta' escrito que as leis ficam UNMEASURED ate' a distro voltar.",
       "twin_or_script": "docs/por-medir.md",
       "verify_cmd": "python _main/bend-laws-gate.py",
-      "after_s": 0.288,
-      "status": "VERIFIED"
+      "after_s": 1.121,
+      "status": "VERIFIED",
+      "load": {
+        "total": 69.6,
+        "busiest": 100.0,
+        "pinned": 4,
+        "starved": true
+      }
     }
   ]
 }
