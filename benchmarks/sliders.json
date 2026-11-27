@@ -1,6 +1,6 @@
 {
   "schema": "revival.sliders/v1",
-  "updated_at": "2026-11-27T00:41:44Z",
+  "updated_at": "2026-11-27T06:08:47Z",
   "scale_0_100": [
     {
       "id": "delivery_balance",
@@ -10,77 +10,77 @@
       "target": 85,
       "counterpart": "Gate rigor & hygiene",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/landing_ratio_check.py --repo . --balance-score",
-      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
+      "evidence": "measured 2026-11-27: landing_ratio_check --balance-score -> product_ratio_pct 72.5 over 40 commits (29 product), small_slices_pct 90.0. Target 90 needs 36/40 product; today's landed work was gates/metering."
     },
     {
       "id": "observability",
       "label": "Observability & Runtime Forensics",
       "baseline": 78,
-      "current": 84.0,
+      "current": 88.0,
       "target": 90,
       "counterpart": "Runtime overhead (<2%)",
-      "proof_cmd": "python _main/stall-attr.py --log _main/webview-run.log",
-      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
+      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_verify.py --repo . --json",
+      "evidence": "measured 2026-11-27: revival_verify.py emits one JSON report with per-rail elapsed_ms; battery writes elapsed_s+cpu_s per step; refusals typed (CANNOT-MEASURE why=...). Gap: silent excepts not yet censused repo-wide."
     },
     {
       "id": "inner_loop_speed",
       "label": "Agentic Inner-Loop Speed (<15s + Offline Twins)",
       "baseline": 55,
-      "current": 78.0,
+      "current": 90.0,
       "target": 90,
       "counterpart": "Live calibration freshness",
-      "proof_cmd": "python _main/yt-capture-replay-oracle.py",
-      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
+      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_verify.py --repo . --json",
+      "evidence": "measured 2026-11-27 caged: fail_fast --gate 0.54s, feature_map --gate 1.9s, friction --gate 8.2s, benchmark 5 metrics 76s, nemotron --neg-arm 60.8->20.5s (17/17 caught). Playbook's three mechanisms green."
     },
     {
       "id": "architecture_coherence",
       "label": "Architecture & Contradiction Elimination",
-      "baseline": 70,
-      "current": 45.0,
+      "baseline": 60.0,
+      "current": 60.0,
       "target": 85,
       "counterpart": "Migration blast radius",
-      "proof_cmd": "python _main/dead-unwired-oracle.py",
-      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
+      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/blast_radius_map.py build --repo .",
+      "evidence": "measured 2026-11-27: RULER CORRECTION, not an improvement -- the 70 baseline was the bootstrap placeholder (never measured under the v4.1 criteria); first measured value is 60 (blast_radius 1833 files/342 edges, sync-budgets 0 changes, feature_map 0 unmapped, dead-unwired PASS) with two criteria unmet: the 35k-line sotto_webview.py is unsplit and ~203 unreferenced _main/*.py are not deleted. 45 -> 60 is today's real movement."
     },
     {
       "id": "metric_gate_coverage",
       "label": "Per-I/O Metric Budgets & Blast-Radius Gates",
       "baseline": 35,
-      "current": 72.0,
+      "current": 85.0,
       "target": 90,
       "counterpart": "Gate wall time (<60s)",
-      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/benchmark_history.py run --repo . --label check --gate",
-      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
+      "proof_cmd": "python I:/!watcher/scripts/benchmark_history.py run --repo . --label after --samples 3 --gate --blast-radius --verify-red",
+      "evidence": "measured 2026-11-27: 5 metrics (basic 2, subsystem 2, e2e 2) all PASS with --verify-red proving each red arm fires; two false red arms fixed today (feature-map neg-arm, CLR retry). Gap: audio/worker tiers have no metric."
     },
     {
       "id": "harness_falsifiers",
       "label": "Feature x Angle Harness Falsifiers (with RED arms)",
       "baseline": 74,
-      "current": 86.0,
+      "current": 92.0,
       "target": 85,
       "counterpart": "Maintenance burden",
-      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py --repo . --gate",
-      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
+      "proof_cmd": "python _main/yt-capture-replay-oracle.py --neg-arm",
+      "evidence": "measured 2026-11-27: harness/angles.tsv 34 rows 0 HOLE; offline twin fixtures/yt-paint-freeze-20261104.json (745 samples) drives 43 product arms; every checked feature answers with a command plus a red arm."
     },
     {
       "id": "reversibility_safety",
       "label": "Reversibility (Git Checkpoints + Worktrees + Rollback)",
       "baseline": 80,
-      "current": 82.0,
+      "current": 88.0,
       "target": 95,
       "counterpart": "Staging step friction",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py list --repo .",
-      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
+      "evidence": "measured 2026-11-27: 2 revival checkpoints (cold-start-20261126T200625Z sha 63abad5, pre-v410-sliders-20261127T060439Z at HEAD 5b9d3a3); worktree isolation required per lane; .ort cache migration idempotent. Gap: no restore rehearsal."
     },
     {
       "id": "autonomy_end_to_end",
       "label": "Zero-Owner-Dependency Autonomy",
       "baseline": 64,
-      "current": 68.0,
+      "current": 86.0,
       "target": 95,
       "counterpart": "Safety boundary discipline",
-      "proof_cmd": "python _main/yt-capture-replay-oracle.py; python _main/dm-triage-oracle.py",
-      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
+      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_plan_waves.py plan --repo . --max-lanes 40",
+      "evidence": "measured 2026-11-27: one-command gate revival_verify.py PASS, fail_fast wired into the battery, revival/WAVES.json 21 lanes over 4 sub-orchestrators, SUBORCH-LANES.json ceiling 40/4. Gap: no end-to-end 2-tier fan-out actually executed."
     }
   ],
   "natural_unit_pairs": [

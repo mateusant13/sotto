@@ -1,0 +1,373 @@
+{
+  "schema": "revival.waves/v1",
+  "generated_at": "2026-11-27T06:04:49Z",
+  "repo": "H:\\sotto",
+  "recent_product_commit_ratio": 0.55,
+  "meta_cap_applied": false,
+  "active_lane_count": 21,
+  "deferred_meta_count": 0,
+  "max_lanes": 40,
+  "sub_orchestrators": [
+    {
+      "sub_orchestrator": "audit-scouts",
+      "title": "Audit & Read-Only Scouts",
+      "lane_count": 1,
+      "lanes": [
+        {
+          "lane_id": "scout-contradictions",
+          "domain": "audit-scouts",
+          "kind": "read",
+          "product_or_meta": "product",
+          "title": "Read-only contradiction, dead-wiring, and session-drift audit",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [],
+          "target_metric": "",
+          "red_cmd": "",
+          "green_cmd": "python \"$S/revival_verify.py\" --repo . --fast --json",
+          "self_land_cmd": ""
+        }
+      ]
+    },
+    {
+      "sub_orchestrator": "product-core",
+      "title": "Product Core Fixes & Architecture",
+      "lane_count": 12,
+      "lanes": [
+        {
+          "lane_id": "perf-subsystem-feature_map_gate_ms",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Fix failing/over-ceiling metric subsystem.feature_map_gate_ms (verdict=FALSE-GREEN, ceiling=15000.0)",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "features/features.json",
+            "features/INDEX.md",
+            "AGENTS.md"
+          ],
+          "target_metric": "subsystem.feature_map_gate_ms",
+          "red_cmd": "python _main/feature-map-neg-arm.py",
+          "green_cmd": "python \"$S/benchmark_history.py\" run --repo . --label wave-subsystem.feature_map_gate_ms --samples 3 --gate",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/benchmark_history.py\" run --repo . --label wave-subsystem.feature_map_gate_ms --samples 3 --gate\" --cleanup"
+        },
+        {
+          "lane_id": "cover-session-clock",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Add metric budget & RED/GREEN harness coverage for high-fan-in file app/shadowplay/session-clock.js",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "app/shadowplay/session-clock.js"
+          ],
+          "target_metric": "coverage:app/shadowplay/session-clock.js",
+          "red_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/session-clock.js --gate",
+          "green_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/session-clock.js --gate",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/session-clock.js --gate\" --cleanup"
+        },
+        {
+          "lane_id": "cover-clip-writer",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Add metric budget & RED/GREEN harness coverage for high-fan-in file app/shadowplay/clip-writer.js",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "app/shadowplay/clip-writer.js"
+          ],
+          "target_metric": "coverage:app/shadowplay/clip-writer.js",
+          "red_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/clip-writer.js --gate",
+          "green_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/clip-writer.js --gate",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/clip-writer.js --gate\" --cleanup"
+        },
+        {
+          "lane_id": "cover-stream-probe",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Add metric budget & RED/GREEN harness coverage for high-fan-in file app/shadowplay/stream-probe.js",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "app/shadowplay/stream-probe.js"
+          ],
+          "target_metric": "coverage:app/shadowplay/stream-probe.js",
+          "red_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/stream-probe.js --gate",
+          "green_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/stream-probe.js --gate",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/stream-probe.js --gate\" --cleanup"
+        },
+        {
+          "lane_id": "cover-save-path",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Add metric budget & RED/GREEN harness coverage for high-fan-in file app/shadowplay/save-path.js",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "app/shadowplay/save-path.js"
+          ],
+          "target_metric": "coverage:app/shadowplay/save-path.js",
+          "red_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/save-path.js --gate",
+          "green_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/save-path.js --gate",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/save-path.js --gate\" --cleanup"
+        },
+        {
+          "lane_id": "cover-nvenc",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Add metric budget & RED/GREEN harness coverage for high-fan-in file app/shadowplay/nvenc.js",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "app/shadowplay/nvenc.js"
+          ],
+          "target_metric": "coverage:app/shadowplay/nvenc.js",
+          "red_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/nvenc.js --gate",
+          "green_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/nvenc.js --gate",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/nvenc.js --gate\" --cleanup"
+        },
+        {
+          "lane_id": "cover-frame-accounting",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Add metric budget & RED/GREEN harness coverage for high-fan-in file app/shadowplay/frame-accounting.js",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "app/shadowplay/frame-accounting.js"
+          ],
+          "target_metric": "coverage:app/shadowplay/frame-accounting.js",
+          "red_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/frame-accounting.js --gate",
+          "green_cmd": "python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/frame-accounting.js --gate",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/blast_radius_map.py\" impact --repo . --files app/shadowplay/frame-accounting.js --gate\" --cleanup"
+        },
+        {
+          "lane_id": "slider-delivery_balance",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Lift slider delivery_balance from 72.0 -> >= 90 (90+ standard)",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "benchmarks/sliders.json#delivery_balance"
+          ],
+          "target_metric": "slider:delivery_balance",
+          "red_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "green_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence\" --cleanup"
+        },
+        {
+          "lane_id": "slider-inner_loop_speed",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Lift slider inner_loop_speed from 78.0 -> >= 90 (90+ standard)",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "benchmarks/sliders.json#inner_loop_speed"
+          ],
+          "target_metric": "slider:inner_loop_speed",
+          "red_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "green_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence\" --cleanup"
+        },
+        {
+          "lane_id": "slider-architecture_coherence",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Lift slider architecture_coherence from 45.0 -> >= 90 (90+ standard)",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "benchmarks/sliders.json#architecture_coherence"
+          ],
+          "target_metric": "slider:architecture_coherence",
+          "red_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "green_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence\" --cleanup"
+        },
+        {
+          "lane_id": "slider-harness_falsifiers",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Lift slider harness_falsifiers from 86.0 -> >= 90 (90+ standard)",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "benchmarks/sliders.json#harness_falsifiers"
+          ],
+          "target_metric": "slider:harness_falsifiers",
+          "red_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "green_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence\" --cleanup"
+        },
+        {
+          "lane_id": "slider-autonomy_end_to_end",
+          "domain": "product-core",
+          "kind": "write",
+          "product_or_meta": "product",
+          "title": "Lift slider autonomy_end_to_end from 68.0 -> >= 95 (90+ standard)",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [
+            "benchmarks/sliders.json#autonomy_end_to_end"
+          ],
+          "target_metric": "slider:autonomy_end_to_end",
+          "red_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "green_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence\" --cleanup"
+        }
+      ]
+    },
+    {
+      "sub_orchestrator": "infra-gates",
+      "title": "Infra, Gates & CI Wiring (OMP_LANE_ROLE=infra)",
+      "lane_count": 3,
+      "lanes": [
+        {
+          "lane_id": "slider-observability",
+          "domain": "infra-gates",
+          "kind": "write",
+          "product_or_meta": "meta",
+          "title": "Lift slider observability from 84.0 -> >= 90 (90+ standard)",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {
+            "OMP_LANE_ROLE": "infra"
+          },
+          "file_scope": [
+            "benchmarks/sliders.json#observability"
+          ],
+          "target_metric": "slider:observability",
+          "red_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "green_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence\" --cleanup"
+        },
+        {
+          "lane_id": "slider-metric_gate_coverage",
+          "domain": "infra-gates",
+          "kind": "write",
+          "product_or_meta": "meta",
+          "title": "Lift slider metric_gate_coverage from 72.0 -> >= 90 (90+ standard)",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {
+            "OMP_LANE_ROLE": "infra"
+          },
+          "file_scope": [
+            "benchmarks/sliders.json#metric_gate_coverage"
+          ],
+          "target_metric": "slider:metric_gate_coverage",
+          "red_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "green_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence\" --cleanup"
+        },
+        {
+          "lane_id": "slider-reversibility_safety",
+          "domain": "infra-gates",
+          "kind": "write",
+          "product_or_meta": "meta",
+          "title": "Lift slider reversibility_safety from 82.0 -> >= 95 (90+ standard)",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {
+            "OMP_LANE_ROLE": "infra"
+          },
+          "file_scope": [
+            "benchmarks/sliders.json#reversibility_safety"
+          ],
+          "target_metric": "slider:reversibility_safety",
+          "red_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "green_cmd": "python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence",
+          "self_land_cmd": "python \"$S/git_checkpoint.py\" wt-land --repo . --worktree <wt> --receipt <receipt.json> --gate-cmd \"python \"$S/slider_scorecard.py\" report --repo . --min-overall 90 --strict-evidence\" --cleanup"
+        }
+      ]
+    },
+    {
+      "sub_orchestrator": "adversarial-verify",
+      "title": "Independent Adversarial Verification",
+      "lane_count": 5,
+      "lanes": [
+        {
+          "lane_id": "verify-acc-01",
+          "domain": "adversarial-verify",
+          "kind": "verify",
+          "product_or_meta": "product",
+          "title": "Independently verify & falsify ACC-01: ",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [],
+          "target_metric": "ACC-01",
+          "red_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "green_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "self_land_cmd": ""
+        },
+        {
+          "lane_id": "verify-acc-02",
+          "domain": "adversarial-verify",
+          "kind": "verify",
+          "product_or_meta": "product",
+          "title": "Independently verify & falsify ACC-02: ",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [],
+          "target_metric": "ACC-02",
+          "red_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "green_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "self_land_cmd": ""
+        },
+        {
+          "lane_id": "verify-acc-03",
+          "domain": "adversarial-verify",
+          "kind": "verify",
+          "product_or_meta": "product",
+          "title": "Independently verify & falsify ACC-03: ",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [],
+          "target_metric": "ACC-03",
+          "red_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "green_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "self_land_cmd": ""
+        },
+        {
+          "lane_id": "verify-acc-04",
+          "domain": "adversarial-verify",
+          "kind": "verify",
+          "product_or_meta": "product",
+          "title": "Independently verify & falsify ACC-04: ",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [],
+          "target_metric": "ACC-04",
+          "red_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "green_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "self_land_cmd": ""
+        },
+        {
+          "lane_id": "verify-acc-05",
+          "domain": "adversarial-verify",
+          "kind": "verify",
+          "product_or_meta": "product",
+          "title": "Independently verify & falsify ACC-05: ",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "env": {},
+          "file_scope": [],
+          "target_metric": "ACC-05",
+          "red_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "green_cmd": "python \"$S/revival_verify.py\" --repo . --json",
+          "self_land_cmd": ""
+        }
+      ]
+    }
+  ],
+  "deferred_meta": []
+}
