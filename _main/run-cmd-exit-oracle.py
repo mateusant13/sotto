@@ -213,20 +213,24 @@ w('sotto: STAGING_LOADED core=yes -> navigating to panel (G3 STUB never-ready)')
 time.sleep(600)
 '''
 
-#: O MUTANTE DO CONTRATO G3 (2026-10-19). A app de mentira cuja PRONTIDAO
-#: chega no MESMO INSTANTE EM QUE MORRE -- a forma exacta do defeito que o
-#: check "a app estava VIVA quando o wrapper voltou" tem de apanhar: um
-#: wrapper que esperou pela MORTE e devolveu 0 como se fosse a PRONTIDAO.
+#: O MUTANTE DO CONTRATO G3 (2026-10-19; refeito 2026-11-27 sem relogio).
+#: A app de mentira so fica pronta no instante em que morre -- a forma exacta
+#: do defeito que o check "a app estava VIVA quando o wrapper voltou" tem de
+#: apanhar. O CONTROLE fica pronto e CONTINUA VIVA ate' o wrapper publicar o
+#: seu retorno.
 #:
-#: O stub e' a MESMA shell nos dois polos; so o ENV muda:
-#:   SOTTO_STUB_READY_AFTER_DEATH=1 -> a metade `--wait-ready` so resolve
-#:   DEPOIS do marcador de morte (o mutante);
-#:   sem a variavel -> resolve assim que o ready-file existe (o CONTROLE, em
-#:   que a app fica pronta e CONTINUA VIVA).
+#: O VEREDITO NAO E' LIDO DO TEMPO. A metade que o wrapper espera escreve o
+#: marcador `.return` com o seu estado: `before-dead` no CONTROLO (a app ainda
+#: vivia quando o wrapper voltou), `after-dead` no MUTANTE (a app ja' tinha
+#: morrido). E' um sinal que o stub controla, lido logo apos o retorno do
+#: wrapper, sem pid, sem ms e sem comparar com um prazo. O antigo
+#: `alive_after=3.0` contra o bound=5.0 media uma corrida: bastava o arranque
+#: atrasar >3 s para o controlo morrer antes do wrapper voltar e o veredito
+#: alternar PASS/FAIL no mesmo input. `alive_after` e' agora so' um limite de
+#: seguranca (20 s); se nao houver marcador, o oraculo diz CANNOT-MEASURE.
 #:
 #: E' um stub em Python: sem WebView2, sem modelo, sem janela, alguns segundos.
-#: O custo nao se sente no PC do dono -- ao contrario de um mutante que lance
-#: a app de verdade. E o wrapper (`run.cmd`) e' o de VERDADE, byte a byte.
+#: O wrapper (`run.cmd`) e' o de VERDADE, byte a byte.
 MUTANT_STUB = '''\
 import datetime
 import os
@@ -237,7 +241,7 @@ argv = sys.argv[1:]
 log = None
 ready = None
 life = 2.0
-alive_after = 3.0
+alive_after = 20.0
 for i, a in enumerate(argv):
     if a == '--log' and i + 1 < len(argv):
         log = argv[i + 1]
@@ -247,36 +251,6 @@ for i, a in enumerate(argv):
         life = float(argv[i + 1])
     if a == '--stub-alive-after' and i + 1 < len(argv):
         alive_after = float(argv[i + 1])
-
-# O wrapper chama a MESMA shell com `--wait-ready` para a espera limitada.
-# Esta metade e' a que decide QUANDO o wrapper volta.
-if '--wait-ready' in argv:
-    k = argv.index('--wait-ready')
-    path = argv[k + 1] if k + 1 < len(argv) else None
-    try:
-        bound = float(os.environ.get('SOTTO_READY_BOUND', '30'))
-    except ValueError:
-        bound = 30.0
-    deadline = time.time() + bound
-    while True:
-        if path and os.path.exists(path):
-            if os.environ.get('SOTTO_STUB_READY_AFTER_DEATH') == '1':
-                # O MUTANTE: a prontidao so conta DEPOIS da app estar morta.
-                marker = path + '.dead'
-                while not os.path.exists(marker):
-                    if time.time() >= deadline:
-                        sys.exit(4)
-                    time.sleep(0.02)
-                # A app escreve o marcador e morre logo a seguir; este
-                # intervalo e' o que torna a morte DETERMINISTA antes do
-                # wrapper voltar (a app ja nao existe quando ele retorna).
-                time.sleep(0.25)
-            sys.exit(0)
-        if time.time() >= deadline:
-            sys.exit(4)
-        time.sleep(0.1)
-if '--check-args' in argv:
-    sys.exit(0)
 
 
 def stamp():
@@ -294,17 +268,68 @@ def w(line):
         f.write(stamp() + ' ' + line + '\\n')
 
 
+def put(path, text):
+    if path:
+        with open(path, 'w') as f:
+            f.write(text + '\\n')
+
+
+# O wrapper chama a MESMA shell com `--wait-ready` para a espera limitada.
+# Esta metade e' a que decide QUANDO o wrapper volta -- e publica isso no log.
+if '--wait-ready' in argv:
+    k = argv.index('--wait-ready')
+    path = argv[k + 1] if k + 1 < len(argv) else None
+    try:
+        bound = float(os.environ.get('SOTTO_READY_BOUND', '30'))
+    except ValueError:
+        bound = 30.0
+    deadline = time.time() + bound
+    while True:
+        if path and os.path.exists(path):
+            if os.environ.get('SOTTO_STUB_READY_AFTER_DEATH') == '1':
+                # O MUTANTE: a prontidao so conta DEPOIS do marcador de morte.
+                marker = path + '.dead'
+                while not os.path.exists(marker):
+                    if time.time() >= deadline:
+                        sys.exit(4)
+                    time.sleep(0.02)
+            # O RETORNO e' um MARCADOR com o estado observado, escrito pela
+            # propia metade que o wrapper espera, ANTES de devolver 0.
+            state = ('after-dead' if os.path.exists(path + '.dead')
+                     else 'before-dead')
+            put(path + '.return', state)
+            sys.exit(0)
+        if time.time() >= deadline:
+            sys.exit(4)
+        time.sleep(0.1)
+if '--check-args' in argv:
+    sys.exit(0)
+
+
 w('sotto: shell=webview2 pywebview=stub python=stub pid=%d' % os.getpid())
 time.sleep(life)
 if ready:
-    with open(ready, 'w') as f:
-        f.write('ready\\n')
-if alive_after > 0:
-    time.sleep(alive_after)
+    put(ready, 'ready')
+    w('sotto: STUB_READY pid=%d' % os.getpid())
+if os.environ.get('SOTTO_STUB_READY_AFTER_DEATH') == '1':
+    w('sotto: SHELL_EXIT rc=0 reason=requested statsPushes=0')
+    w('sotto: STUB_DEAD pid=%d' % os.getpid())
+    if ready:
+        put(ready + '.dead', 'dead')
+    sys.exit(0)
+# O CONTROLE fica VIVO ate' o wrapper publicar o retorno via `.return`.
+# Nenhum `alive_after` curto: so' um limite de seguranca para nao deixar um
+# processo preso se o wrapper falhar; ele nunca decide o veredito.
+cap = time.time() + alive_after
+while ready and not os.path.exists(ready + '.return'):
+    if time.time() >= cap:
+        w('sotto: STUB_RETURN_MISSING pid=%d' % os.getpid())
+        break
+    time.sleep(0.02)
 w('sotto: SHELL_EXIT rc=0 reason=requested statsPushes=0')
+w('sotto: STUB_DEAD pid=%d' % os.getpid())
 if ready:
-    with open(ready + '.dead', 'w') as f:
-        f.write('dead\\n')
+    put(ready + '.dead', 'dead')
 sys.exit(0)
 '''
 
@@ -856,13 +881,41 @@ def arm_help(run_cmd, pr, census, notes) -> dict:
 
 
 def arm_start(run_cmd, pr, census, notes, name, log, extra, exit_after,
-              env=None) -> dict:
+              env=None, stub=False) -> dict:
     """A normal detached start: rc 0 AND the app really came up, AND it ends
-    without a leftover."""
+    without a leftover. `stub=True` also captures the stub's ordered markers."""
     os.makedirs(os.path.dirname(log), exist_ok=True)
     before = size_of(log)
     res = run_wrapper(run_cmd, extra, capture=False, env=env)
     t_return = time.time()
+    stub_marks = {}
+    if stub:
+        # O marcador `.return` e' escrito pelo wait-child ANTES de o wrapper
+        # voltar. O seu CONTEUDO e' a prova: before-dead = app viva,
+        # after-dead = app morta. Nada de relogio, nem leitura de pid.
+        mark_dir = os.path.dirname(log)
+        deadline = time.time() + 2.0
+        returns = []
+        while time.time() < deadline:
+            returns = sorted(p for p in os.listdir(mark_dir)
+                             if p.startswith('ready-') and p.endswith('.return'))
+            if returns:
+                break
+            time.sleep(0.02)
+        if returns:
+            marker = returns[0]
+            state = text_of(os.path.join(mark_dir, marker)).strip()
+            dead = os.path.exists(os.path.join(
+                mark_dir, marker[:-len('.return')] + '.dead'))
+            stub_marks = {'state': state, 'marker': marker,
+                          'evidence': (f'return_marker={marker} state={state} '
+                                       f'dead_marker={dead}')}
+        else:
+            stub_marks = {
+                'evidence': '(no .return marker after the wrapper returned)',
+                'cannot_measure': (
+                    'stub-return-marker-missing: the wrapper never published '
+                    'a return marker, so there is no ordered signal to judge')}
     checks = [('rc == 0', res['rc'] == 0, f"rc={res['rc']}")]
     # ---- O CONTRATO G3, MEDIDO ---------------------------------------------
     # run.cmd espera a PRONTIDAO da app -- o ficheiro --ready-file que a app
@@ -905,9 +958,34 @@ def arm_start(run_cmd, pr, census, notes, name, log, extra, exit_after,
                    f'pid={pid} alive={alive_at_return} '
                    f'observed_{seen_after_ms}ms_after_the_return'))
     if pid is None:
-        return {'name': name, 'args': res['args'], 'rc': res['rc'],
-                'expect_rc': 0, 'ms': res['ms'], 'checks': checks, 'log': log,
-                'pid': None}
+        out = {'name': name, 'args': res['args'], 'rc': res['rc'],
+               'expect_rc': 0, 'ms': res['ms'], 'checks': checks, 'log': log,
+               'pid': None, 'stub_marks': stub_marks}
+        if name.startswith('start-'):
+            out['checks'] = []
+            out['cannot_measure'] = (
+                'live-app-not-started: no `shell=webview2 ... pid=` line in the '
+                'app log, so there is no live app to measure')
+        return out
+    if name.startswith('start-'):
+        full = text_of(log)
+        if not READY_BOUNDARY_RE.search(full):
+            # O PRECONDICIONADO destes dois bracos e' uma app WebView2 VIVA que
+            # atravessa PRELOAD_ACTIVE. Numa lane ela nao existe (medido
+            # 2026-11-27: WEBVIEW2_INIT_FAILED 0x80080005 num dos arranques e
+            # nenhum PRELOAD_ACTIVE em nenhum; o wrapper devolve rc=4 HANG).
+            # Sem isso nao ha contrato G3 para medir: CANNOT-MEASURE, nunca
+            # PASS e nunca um FAIL que acuse o wrapper.
+            detail = ('WEBVIEW2_INIT_FAILED in the app log'
+                      if 'WEBVIEW2_INIT_FAILED' in full else
+                      f'no PRELOAD_ACTIVE before the wrapper returned rc={res["rc"]}')
+            reason = 'live-webview2-unavailable: ' + detail
+            kill_by_pid(pid)
+            wait_gone(pr, pid, 2.0)
+            return {'name': name, 'args': res['args'], 'rc': res['rc'],
+                    'expect_rc': 0, 'ms': res['ms'], 'checks': [],
+                    'cannot_measure': reason, 'log': log, 'pid': pid,
+                    'stub_marks': stub_marks}
     alive = False
     deadline = time.time() + 5.0
     while time.time() < deadline and not alive:
@@ -958,7 +1036,7 @@ def arm_start(run_cmd, pr, census, notes, name, log, extra, exit_after,
                    gone, f'pid={pid} gone={gone} {kill_note}'))
     return {'name': name, 'args': res['args'], 'rc': res['rc'], 'expect_rc': 0,
             'ms': res['ms'], 'checks': checks, 'log': log, 'pid': pid,
-            'killed_by_pid': kill_note}
+            'killed_by_pid': kill_note, 'stub_marks': stub_marks}
 
 
 # --------------------------------------------------------------------------
@@ -1259,12 +1337,14 @@ def arm_mutant(notes, pr, census) -> dict:
     custo sao alguns segundos e o PC do dono nao sente nada.
     """
     # ---- o CONTROLE: a app fica pronta e CONTINUA VIVA ----------------------
+    # `alive_after=20.0` e' so' o limite de seguranca do stub, NAO o prazo do
+    # contrato: a app espera pelo marcador `.return` que o wrapper escreve.
     ccmd, cenv = build_tree(notes, 'mutant-control', stub_text=MUTANT_STUB)
     clog = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(ccmd))),
                         '_main', 'mutant-control.log')
     control = arm_start(ccmd, pr, census, notes, 'mutant-control', clog,
                         ['--log', clog, '--stub-life', '2.0',
-                         '--stub-alive-after', '3.0'], 8.0, env=cenv)
+                         '--stub-alive-after', '20.0'], 8.0, env=cenv, stub=True)
     # ---- o MUTANTE: a app so fica pronta quando JA MORREU ------------------
     mcmd, menv = build_tree(notes, 'mutant-ready-at-death',
                             stub_text=MUTANT_STUB,
@@ -1273,25 +1353,31 @@ def arm_mutant(notes, pr, census) -> dict:
                         '_main', 'mutant-ready-at-death.log')
     mutant = arm_start(mcmd, pr, census, notes, 'mutant-ready-at-death', mlog,
                        ['--log', mlog, '--stub-life', '2.0',
-                        '--stub-alive-after', '0'], 8.0, env=menv)
-    c_alive, c_alive_ev = check_of(control, 'STILL RUNNING when the wrapper returned')
-    c_margin, c_margin_ev = check_of(control, 'the wrapper returned BEFORE the app exited')
-    m_alive, m_alive_ev = check_of(mutant, 'STILL RUNNING when the wrapper returned')
-    m_margin, m_margin_ev = check_of(mutant, 'the wrapper returned BEFORE the app exited')
+                        '--stub-alive-after', '0'], 8.0, env=menv, stub=True)
+    cm = control.get('stub_marks', {})
+    mm = mutant.get('stub_marks', {})
+    c_state, m_state = cm.get('state'), mm.get('state')
+    # O CONTEUDO do marcador E' o contrato: before-dead no controlo (app viva),
+    # after-dead no mutante (app morta). Nenhum ms, nenhum pid, nenhum budget.
+    c_ok = c_state == 'before-dead'
+    m_ok = m_state == 'after-dead'
+    refusal = cm.get('cannot_measure') or mm.get('cannot_measure')
+    if not refusal and (not c_state or not m_state):
+        refusal = (f'stub-markers-absent control={c_state!r} mutant={m_state!r} '
+                   '-- no ordered signal to judge the wrapper return against')
     checks = [
-        ('CONTROL: the wrapper returned while the app was STILL ALIVE (the '
-         'instrument is not always-red)',
-         c_alive is True, c_alive_ev),
-        ('CONTROL: the margin is positive (the wrapper returned before the app '
-         'exited)',
-         c_margin is True, c_margin_ev),
-        ('MUTANT: the wrapper returned with the app DEAD -> the check says NO',
-         m_alive is False, m_alive_ev),
-        ('MUTANT: the margin is not positive -> the check says NO',
-         m_margin is False, m_margin_ev),
+        ('CONTROL: the wrapper returned while the app was STILL ALIVE '
+         '(the stub\'s own .return marker says before-dead)',
+         c_ok, cm.get('evidence', '(no stub marker)')),
+        ('MUTANT: the wrapper returned with the app DEAD '
+         '(the stub\'s own .return marker says after-dead)',
+         m_ok, mm.get('evidence', '(no stub marker)')),
     ]
-    return {'name': 'mutant-ready-at-death', 'checks': checks,
-            'control': control, 'mutant': mutant}
+    out = {'name': 'mutant-ready-at-death', 'checks': checks,
+           'control': control, 'mutant': mutant}
+    if refusal:
+        out['cannot_measure'] = refusal
+    return out
 
 
 def print_mutant(m: dict) -> None:
@@ -1454,6 +1540,11 @@ def main() -> int:
     ap.add_argument('--json', default=None, help='receipt path')
     ap.add_argument('--no-gaps', action='store_true',
                     help='skip the G1..G4 before/after arms')
+    ap.add_argument('--mutant-only', action='store_true',
+                    help='measure ONLY the stub mutant/control pair: the two '
+                         'live-app arms are reported CANNOT-MEASURE (no '
+                         'WebView2 app in a lane), never a silent pass; the '
+                         'G1..G4 pairs are not selected')
     # WHICH ARMS RUN (lane B, 2026-10-15). The battery must be able to gate this
     # wrapper's exit contract WITHOUT starting the app, because 'launches=0' is a
     # MEASURED property of the battery and not a hope (F5: only the Lead launches).
@@ -1524,13 +1615,15 @@ def main() -> int:
     # a silent skip: a typo that dropped arm 1 would turn the negative arm vacuous,
     # and this oracle's whole value is that it can say no.
     want = [n.strip() for n in str(a.arms).split(',') if n.strip()]
+    if a.mutant_only:
+        want = []
     ARM_NAMES = ('argv', 'bogus', 'help', 'start')
     unknown = sorted(set(want) - set(ARM_NAMES))
     if unknown:
         print(f'VERDICT FAIL  --arms names arm(s) that do not exist: {unknown} '
               f'(known: {", ".join(ARM_NAMES)})')
         return 1
-    if not want:
+    if not want and not a.mutant_only:
         print('VERDICT FAIL  --arms selected no arm at all')
         return 1
     if a.neg_arm and 'bogus' not in want:
@@ -1540,6 +1633,10 @@ def main() -> int:
     print(f'ARM-SELECT {",".join(want)}'
           + ('   (LAUNCH-FREE: nothing below reaches the launch path)'
              if 'start' not in want else '   (the start arms LAUNCH the app)'))
+    if a.mutant_only:
+        print('ARM-NOTE       --mutant-only: start-logged/start-default are '
+              'CANNOT-MEASURE (no live WebView2 readiness boundary in a lane); '
+              'G1..G4 are not selected. Only the two-stub pair is measured.')
 
     arms = []
     if 'argv' in want:
@@ -1587,7 +1684,7 @@ def main() -> int:
 
     # ---- the four gap arms (each with a BEFORE, in a pre-fix copy) ---------
     gaps: list = []
-    if not a.no_gaps:
+    if not a.no_gaps and not a.mutant_only:
         print('GAPS the before/after pairs of docs/audit/launch-entry.md §2 '
               '(BEFORE = a copy whose shell+wrapper are the pre-fix bytes)')
         for fn in (arm_gap_panel, arm_gap_pywebview, arm_gap_hang,
@@ -1636,8 +1733,15 @@ def main() -> int:
               'arms must show none.')
 
     results = {arm['name']: arm for arm in arms}
+    cannot_arms = [(arm['name'], arm['cannot_measure']) for arm in arms
+                   if arm.get('cannot_measure')]
+    if a.mutant_only:
+        why_live = ('live-app-arms-not-selected-by---mutant-only: no WebView2 '
+                    'readiness boundary was measured in this run')
+        cannot_arms += [('start-logged', why_live), ('start-default', why_live)]
     failed = [n for n, arm in results.items()
-              if not all(ok for _nm, ok, _ev in arm['checks'])]
+              if not arm.get('cannot_measure')
+              and not all(ok for _nm, ok, _ev in arm['checks'])]
     failed += [c[0] for c in temp_checks if not c[1]]
     if census_ok:
         print(f'CENSUS OK: no visible window in {snap_arms["samples"]} samples '
@@ -1663,8 +1767,15 @@ def main() -> int:
                        f'failed={sorted(failed)}')
     else:
         arms_ok = not failed
-        arms_reason = (f'all {len(arms)} arm(s) green' if arms_ok
+        arms_reason = ('no live-app arms selected (--mutant-only)'
+                       if a.mutant_only else
+                       f'all {len(arms)} arm(s) green' if arms_ok
                        else f'failed arms={sorted(failed)}')
+    if cannot_arms:
+        arms_reason = (f'{len(cannot_arms)} arm(s) CANNOT-MEASURE' if not a.mutant_only
+                       else 'no live-app arms selected (--mutant-only)')
+        arms_reason += ('  ' +
+                        ';'.join(f'{n}:{why}' for n, why in cannot_arms))
 
     census_reason = (f'{snap_arms["samples"]} samples, '
                      f'{snap_arms["visible_samples"]} with a visible window')
@@ -1675,20 +1786,28 @@ def main() -> int:
                    else f'failed gaps={gaps_failed}')
     mutants_failed = [m['name'] for m in mutants
                       if not all(c[1] for c in m['checks'])]
+    mutant_cannot = [(m['name'], m['cannot_measure']) for m in mutants
+                     if m.get('cannot_measure')]
     # UMA POPULACAO VAZIA NAO E' UMA CAMADA VERDE (medido 2026-11-27, audit #10).
-    # `mutant_ok = not mutants_failed` e' True quando nenhum mutante correu -- com
+    # `mutant_ok = not mutants_failed` era True quando nenhum mutante correu -- com
     # `--arms` a selecionar um subconjunto sem mutantes, a bateria imprimia PASS
     # sem uma unica prova de mutacao. A camada tem de EXISTIR e sobreviver.
-    mutant_ok = bool(mutants) and not mutants_failed
+    mutant_ok = bool(mutants) and not mutants_failed and not mutant_cannot
     if not mutants:
         mutant_reason = ('CANNOT-MEASURE why=no-mutant-in-selection -- nenhum '
                          'mutante correu, logo nao ha camada de mutacao a julgar')
+    elif mutant_cannot:
+        mutant_reason = ('CANNOT-MEASURE ' +
+                         ';'.join(f'{n}:{why}' for n, why in mutant_cannot))
     elif mutant_ok:
-        mutant_reason = ('the MUTANT is red on the two new checks and the CONTROL '
-                         'is green')
+        mutant_reason = ('the MUTANT is red on the two new checks and the '
+                         'CONTROL is green')
     else:
         mutant_reason = f'failed mutants={mutants_failed}'
-    print(f'ARM-VERDICT    {"PASS" if arms_ok else "FAIL"}  {arms_reason}')
+    mutant_word = ('CANNOT-MEASURE' if (mutant_cannot or not mutants)
+                   else 'PASS' if mutant_ok else 'FAIL')
+    arm_word = 'CANNOT-MEASURE' if cannot_arms else 'PASS' if arms_ok else 'FAIL'
+    print(f'ARM-VERDICT    {arm_word}  {arms_reason}')
     if a.neg_arm and PREFLIGHT_MARK not in text_of(run_cmd):
         print('ARM-NOTE       the argv arm is VACUOUS in this copy: the pre-fix '
               'wrapper has no pre-flight, so no argv set can be refused by it '
@@ -1696,7 +1815,7 @@ def main() -> int:
     if gaps:
         print(f'GAP-VERDICT    {"PASS" if gaps_ok else "FAIL"}  {gaps_reason}')
     if mutants:
-        print(f'MUTANT-VERDICT {"PASS" if mutant_ok else "FAIL"}  {mutant_reason}')
+        print(f'MUTANT-VERDICT {mutant_word}  {mutant_reason}')
     print(f'CENSUS-VERDICT {"PASS" if census_ok else "FAIL"}  {census_reason}')
     # ONLY THE ARMS THAT RAN. The literal tuple this used to print indexed
     # results[n], which KeyERRORED the moment a subset was selected -- a
@@ -1707,8 +1826,21 @@ def main() -> int:
     for g in gaps:
         print(f'GAP-RCS {g["gap"]:<22} after={g["after"]["rc"]} '
               f'before={g["before"]["rc"]}')
-    verdict_ok, why = verdict_from(arms_ok, gaps_ok, census_ok, mutant_ok)
-    print(f'VERDICT {"PASS" if verdict_ok else "FAIL"}  {why}')
+    for m2 in mutants:
+        print(f'MUTANT-RCS {m2["name"]:<22} control={m2["control"]["rc"]} '
+              f'mutant={m2["mutant"]["rc"]} (want 0/0)')
+    cannot = list(cannot_arms) + [(f'mutant:{n}', why)
+                                  for n, why in mutant_cannot]
+    if cannot:
+        verdict_ok = False
+        why = 'CANNOT-MEASURE ' + '; '.join(f'{n}:{w}' for n, w in cannot)
+        verdict_word = 'CANNOT-MEASURE'
+        rc = 2
+    else:
+        verdict_ok, why = verdict_from(arms_ok, gaps_ok, census_ok, mutant_ok)
+        verdict_word = 'PASS' if verdict_ok else 'FAIL'
+        rc = 0 if verdict_ok else 1
+    print(f'VERDICT {verdict_word}  {why}')
     print('VERDICT-CARRIES the wrapper exit contract (arms+gaps+mutant). The census is reported above'
           ' and is NOT part of this exit code: a visible window is an APP-side fact (rows'
           ' #4/#46), and reading it as "the wrapper failed" is the confusion this oracle was'
@@ -1727,18 +1859,24 @@ def main() -> int:
                    'census': snap_arms, 'census_gaps': snap_gaps,
                    'arms_ok': arms_ok, 'gaps_ok': gaps_ok, 'census_ok': census_ok,
                    'mutant_ok': mutant_ok,
-                   'arm_verdict': 'PASS' if arms_ok else 'FAIL',
+                   'arm_verdict': arm_word,
                    'gap_verdict': 'PASS' if gaps_ok else 'FAIL',
-                   'mutant_verdict': 'PASS' if mutant_ok else 'FAIL',
+                   'mutant_verdict': mutant_word,
                    'census_verdict': 'PASS' if census_ok else 'FAIL',
-                   'verdict': 'PASS' if verdict_ok else 'FAIL',
+                   'verdict': verdict_word,
+                   'cannot_measure': cannot,
                    'verdict_carries': 'arms+gaps+mutant (the wrapper exit contract)',
                    'reason': why}, f, indent=2)
     print(f'RECEIPT {receipt_path}')
-    return 0 if verdict_ok else 1
+    return rc
 
 
 def _print_arm(arm: dict) -> None:
+    if arm.get('cannot_measure'):
+        print(f'ARM {arm["name"]:<13} rc={arm["rc"]} '
+              f'want={arm["expect_rc"]} ms={arm["ms"]} '
+              f'CANNOT-MEASURE  {arm["cannot_measure"]}')
+        return
     ok = all(c[1] for c in arm['checks'])
     head = (f'ARM {arm["name"]:<13} rc={arm["rc"]} '
             f'want={arm["expect_rc"]} ms={arm["ms"]} '
