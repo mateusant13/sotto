@@ -960,8 +960,8 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
 - **PIN do ficheiro (re-medido 2026-11-27, depois do par `youtube-sync`):**
-  `_main\_audit-verify-all.cmd` = **457800 B**, **5215 CRLF** / 0 bare LF,
-  sha256 `7C90310D84F49C33EE72F5A4F6108E2060147A3D362D21EEEE65D7195699F191`.
+  `_main\_audit-verify-all.cmd` = **458625 B**, **5225 CRLF** / 0 bare LF,
+  sha256 `449C5BCF2612E88F2CC00F72D0B52044D057DCB6447719C8E9E219037C3EBE92`.
   (O par entrou porque `youtube-sync-oracle.py` era o UNICO oraculo da familia do
   YouTube fora da bateria -- 56 passos ligados, 0 chamadores -- e por isso a arm
   3.5 dele ficou VERMELHA sem dono, a exigir `window_by_paint` onde o dono mandou
@@ -1031,6 +1031,36 @@ um **TAB**; um blob binario publica `i/-text` e nao conta como divergente.
 `python _main/shell-thread-budget-oracle.py` antes e depois e cola os dois numeros com o pid. Um
 stutter "resolvido" sem pid, fio e linha nao e' um stutter resolvido. Recibo de referencia:
 `_main/receipt-20261108-stutter-caption-tick.md`.
+
+## UMA VARREDURA DE FAMILIA E' UM LACO, E UM LACO DE SHELL E' UM STUTTER (medido 2026-11-27)
+
+- **2026-11-27 · o card que abriu isto.** O watcher mediu e mandou
+  `python.exe(45980)` = `_main/youtube-cdp-source-oracle.py --neg-arm`,
+  **io 1.50425 MB/s**, veredicto `disk.saturated` em H:
+  (`dm-3e2757b5705d76bcf5db`). A atribuicao estava certa: era uma lane desta casa a
+  correr a familia do YouTube como
+
+      for f in _main/*youtube*oracle*.py; do timeout 180 python "$f" > I:/cc-tmp/...; done
+
+- **2026-11-27 · O laco de shell custa por DUAS razoes, e nenhuma e' resolvida por
+  um tecto.** (1) O shell de 1,5 MB era lido do disco por CADA um dos 41 oraculos,
+  e nenhum consultava o cache por conteudo que ja' existe (`_main/_stepcache.py`);
+  (2) NADA declarava tecto -- nem fios, nem prioridade, nem quanto do disco -- e o
+  `timeout 180` de cada volta e' um prazo por PASSO, nunca um tecto. Um laco assim
+  e' o stutter, vestido de instrumento.
+- **A ferramenta que o substitui e' `_main/oracle-family-sweep.py`**: um filho por
+  vez, `OMP/MKL/OPENBLAS/NUMEXPR/VECLIB=1` e `BELOW_NORMAL_PRIORITY_CLASS` na
+  largada (o trabalho COMPLETA, e a mao do dono nunca espera), `_stepcache check`
+  por CONTENT antes de pagar o arranque, e `SUMMARY hit=/miss=/fail=` no fim. Um
+  `HIT` nao arranca processo nenhum.
+- **Regra para qualquer lane:** varrer uma familia de oraculos e' um ISOLAMENTO,
+  nao um `for` em bash. Quem precisar de um laco proprio declara os quatro numeros
+  (fios do filho, prioridade, prazo, quantos processos simultaneos) e passa pelo
+  cache; sem isso o proximo card de stutter nomeia esta lane outra vez, com pid.
+- **A medicao que o card exige e' o par, sempre:** `python -m watcher perf` e
+  `python -m watcher profile <pid>` enquanto o trabalho corre. E "o trabalho
+  COMPLETOU" e' metade da prova -- os 41 oraculos da familia saíram **0 com rc
+  diferente de zero** (antes: 1, o `youtube-sync`, curado no mesmo turno).
 
 ## `step_s=1.00` JA' DIZ "VIDEO PAUSADO", E CONFUNDI-LO COM CONGELAMENTO CUSTA UMA SESSAO (medido 2026-11-27)
 

@@ -2032,6 +2032,16 @@ REM cortava em `cap = min(pintado, relogio_de_palavra)`: meia palavra, linha a
 REM construir-se, e o cue anterior empilhado por baixo) e passou a devolver as
 REM LINHAS que o player desenha, uma por linha, inteiras, com o `>>` removido.
 REM `always` porque le o SHELL e o `youtube_window.py` ao vivo.
+REM A VARREDURA DA FAMILIA E' UM PASSO, NAO UM LACO DE SHELL (2026-11-27).
+REM Nascida de um card de STUTTER (`dm-3e2757b5705d76bcf5db`): a familia do YouTube
+REM corria como `for f in ...; do timeout 180 python "$f"; done`, 41 arranques a ler
+REM o mesmo shell de 1,5 MB, sem tecto nem cache -- `python.exe(45980)` a 1,5 MB/s com
+REM H: a `busy=80,3%`. O passo abaixo julga a PROPRIEDADE que a cura tem de manter: um
+REM `HIT` nao arranca processo nenhum (medido: 25/25 HIT em 2,3 s contra 61,0 s a frio).
+if exist _main\oracle-family-sweep.py (
+  call :step oracle-family-sweep 0 "_main\oracle-family-sweep.py;_main\_stepcache.py" "%OUT%\oracle-family-sweep.log" python _main\oracle-family-sweep.py --family youtube
+  call :record oracle-family-sweep !STEP_RC!
+) else ( call :record oracle-family-sweep MISSING )
 REM `youtube-sync-oracle.py` era o UNICO oraculo da familia do YouTube fora desta
 REM bateria (56 passos ligados, 0 chamadores), e por isso a arm 3.5 dele ficou
 REM VERMELHA sem dono: ela exigia `window_by_paint` no sitio `painted`, que o dono
