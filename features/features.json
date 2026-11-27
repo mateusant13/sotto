@@ -1,9 +1,9 @@
 {
   "schema": "revival.features/v1",
   "repo": "sotto",
-  "git_head": "61802bc",
-  "generated_at": "2026-11-27T07:04:20Z",
-  "total_tracked_files": 3421,
+  "git_head": "871892d",
+  "generated_at": "2026-11-27T20:56:35Z",
+  "total_tracked_files": 3444,
   "feature_count": 15,
   "features": [
     {
@@ -1351,16 +1351,16 @@
         "_main/zip-mockups/zip-E-panels.html",
         "_main/zipc-designs-oracle.py"
       ],
-      "file_count": 1330,
-      "recent_commit_touches": 349,
+      "file_count": 1339,
+      "recent_commit_touches": 385,
       "recent_commit_subjects": [
         "perf(nemotron-oracle): split a 1.5 MB source once, not 12x (46.2s -> 3.0s CPU)",
         "fix(gates): two false greens closed, ambient arm declared, dm-triage wired",
         "chore: drop two pasted oracle dumps from the repository root",
         "ops: battery GREEN -- cheaper oracles, chrome and token removals",
         "perf(sidecar): the diarizer window drops to the measured side of the cliff",
-        "fix(battery): repair twelve rotted instruments and close the Codex handover",
-        "feat(engines): CUDA-only Redux/Ultra/speaker sessions and counted queue eviction"
+        "fix(captions): a booting page is not a verdict, and the mirror carries the proven pause",
+        "fix(stepcache): record SKIP-SLOW cost and reason in the ratchet row"
       ],
       "how_it_works": "_main is the verification workshop rather than shipped runtime: `_main/_audit-verify-all.cmd` runs the aggregated battery and records each step's rc, while `_main/battery-budget-oracle.py` enforces the per-step ratchet against `_main/battery-budget-baseline.json` and `_main/tooling-intent-oracle.py` checks that new instruments declare the bug they serve. `_main/yt-capture-replay-oracle.py` and `_main/yt-headless-paint-oracle.py` replay real player and paint fixtures offline, and `_main/dead-unwired-oracle.py` keeps the known-unwired twins from silently becoming second owners. Step timings live in `_cache/battery-steps.json`; none of this opens the owner's app.",
       "inputs": [
@@ -1802,14 +1802,16 @@
         "app/webview/yt_read_budget.py",
         "app/webview/z_order.py"
       ],
-      "file_count": 51,
-      "recent_commit_touches": 67,
+      "file_count": 52,
+      "recent_commit_touches": 68,
       "recent_commit_subjects": [
+        "fix(law): bound log and caption queues, let owner switch and revive own park key",
+        "test(oracles): replace object.__new__ with documented for_test seams",
+        "fix(captions): one malformed line on stdout killed the whole caption channel",
+        "fix(shell): a guard on one door and missing on its twin is half a guard",
         "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth",
-        "fix(caption): budget the whole caption read, not only the UIA branch",
-        "fix(caption): a parked CDP source is not a cooldown to expire",
         "fix(caption): the heartbeat writes its first tick before anything can stop it",
-        "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery"
+        "fix(youtube): a stale photo and a disproved pause no longer blank the caption"
       ],
       "how_it_works": "`app/webview/sotto_webview.py` is the live WebView2 shell: it hosts `panel.html` from app/panel unchanged and exposes the `window.sotto` bridge ported from the Electron preload. `youtube_cdp_source.py` supplies captions from the player CDP tree when UIA goes blank in a background tab, with `youtube_clock.py` and `youtube_monotonic.py` owning cue timing. `overlay_paint.py` holds the pure measurement, layout and bitmap half of the overlay paint while `caption_overlay.py` owns the on-screen window; `history_context.py` and the shell's history writer persist committed lines. `headless_paint.py` replays 745 real freeze samples off-screen for the paint budget.",
       "inputs": [
@@ -1966,12 +1968,14 @@
       "files": [
         "scripts/agc-gate.sh",
         "scripts/check-bug-hunt-wiring.py",
+        "scripts/gate.py",
         "scripts/task-resolver-gate.py",
         "scripts/test_task_resolver_gate.py"
       ],
-      "file_count": 4,
-      "recent_commit_touches": 1,
+      "file_count": 5,
+      "recent_commit_touches": 2,
       "recent_commit_subjects": [
+        "test(gate): one unified driver for sotto's real rails",
         "fix(battery): repair twelve rotted instruments and close the Codex handover"
       ],
       "how_it_works": "`scripts/task-resolver-gate.py` enforces the task-resolver mandate with checks for the AGENTS.md route, skill version and digest, gate-bootstrap law, evidence vocabulary and battery wiring; its mutation arms require the named check to go red. `scripts/check-bug-hunt-wiring.py` does the equivalent for bug-hunt, `scripts/test_task_resolver_gate.py` unit-tests the gate, and `scripts/agc-gate.sh` reads WORKER_STATS to prove the live AGC acts when allowed and needed.",
@@ -2074,11 +2078,11 @@
       "file_count": 44,
       "recent_commit_touches": 55,
       "recent_commit_subjects": [
-        "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth",
-        "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery",
-        "feat(audio): capture the microphone and transcribe both sides",
-        "worker: reopen a tap whose meter is blind when the run already delivered",
-        "fix: the constant my trim deleted, and three controls that had stopped judging"
+        "fix: the constant my trim deleted, and three controls that had stopped judging",
+        "perf(sidecar): the cliff note keeps the measurement without the essay",
+        "perf(sidecar): the diarizer window drops to the measured side of the cliff",
+        "fix(youtube): a stale photo and a disproved pause no longer blank the caption",
+        "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth"
       ],
       "how_it_works": "`worker/sotto_worker.py` is the live ASR worker: sounddevice loopback capture into a ring, resample, ONNX streaming features, RNN-T decode, punctuation and prosody, and speaker sidecars, with one JSON object per flushed stdout line. `live_route.py` and `engine_switch.py` choose the engine, `audio_queue_consumer.py` drains the queue and `discord_streams.py` is the alternate reader reachable from `run.cmd --worker`. `_main/audio-recorder-oracle.py` and `_main/worker-churn-oracle.py` gate capture and shell-driven restarts.",
       "inputs": [
