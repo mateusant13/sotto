@@ -1,9 +1,9 @@
 {
   "schema": "revival.features/v1",
   "repo": "sotto",
-  "git_head": "5133395",
-  "generated_at": "2026-11-27T22:48:19Z",
-  "total_tracked_files": 3449,
+  "git_head": "4f44588",
+  "generated_at": "2026-11-27T23:00:51Z",
+  "total_tracked_files": 3451,
   "feature_count": 15,
   "features": [
     {
@@ -1353,7 +1353,7 @@
         "_main/zipc-designs-oracle.py"
       ],
       "file_count": 1340,
-      "recent_commit_touches": 386,
+      "recent_commit_touches": 385,
       "recent_commit_subjects": [
         "perf(nemotron-oracle): split a 1.5 MB source once, not 12x (46.2s -> 3.0s CPU)",
         "fix(gates): two false greens closed, ambient arm declared, dm-triage wired",
@@ -1805,7 +1805,7 @@
         "app/webview/z_order.py"
       ],
       "file_count": 52,
-      "recent_commit_touches": 70,
+      "recent_commit_touches": 68,
       "recent_commit_subjects": [
         "fix(worker): bound the QueryInterface log and wire both new gates",
         "fix(log): a rotation that cannot happen is now counted and named",
@@ -1973,11 +1973,13 @@
         "scripts/gate.py",
         "scripts/revival_gate.py",
         "scripts/task-resolver-gate.py",
+        "scripts/test_gate.py",
         "scripts/test_task_resolver_gate.py"
       ],
-      "file_count": 6,
-      "recent_commit_touches": 2,
+      "file_count": 7,
+      "recent_commit_touches": 4,
       "recent_commit_subjects": [
+        "feat(revival): the gate is a file, and the two vocabularies are declared",
         "test(gate): one unified driver for sotto's real rails",
         "fix(battery): repair twelve rotted instruments and close the Codex handover"
       ],

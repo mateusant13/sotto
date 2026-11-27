@@ -252,10 +252,17 @@ def stage_angles(deadline: float) -> dict:
         if timed_out:
             return refused(name, f"CANNOT-MEASURE {label}: {detail}",
                            round((time.monotonic() - started) * 1000), cannot=True)
-        if (rc == 0) != want_zero:
-            return refused(name, f"{label} rc={rc} (expected {'0' if want_zero else 'non-zero'}): {detail}",
-                           round((time.monotonic() - started) * 1000))
-    return passed(name, f"{ANGLE_KEY[1]} cmd=0 neg!=0: {tail(' '.join(pos))}",
+        if want_zero:
+            if rc != 0:
+                return refused(name, f"cmd rc={rc} (expected 0): {detail}",
+                               round((time.monotonic() - started) * 1000))
+        elif rc != 1:
+            # The neg arm returns 1 only when every mutant was caught; 2 means
+            # the arm itself failed (no verdict). A blind arm is not a red arm.
+            return refused(name, f"neg rc={rc} (expected 1 RED): {detail}",
+                           round((time.monotonic() - started) * 1000),
+                           cannot=(rc >= 2))
+    return passed(name, f"{ANGLE_KEY[1]} cmd=0 neg=1: {tail(' '.join(pos))}",
                   round((time.monotonic() - started) * 1000))
 
 
@@ -384,10 +391,13 @@ def main(argv: list[str] | None = None) -> int:
     rc = 2 if plain else 3 if cannot else 0
     verdict = {0: "PASS", 2: "REFUSED", 3: "CANNOT-MEASURE"}[rc]
     if rc == 0:
-        summary = f"gate PASS {len(results)}/{len(results)} stages in {wall_ms}ms rc=0"
+        ran = [r for r in results if r["verdict"] != "SKIPPED"]
+        skipped = len(results) - len(ran)
+        suffix = f" ({skipped} SKIPPED)" if skipped else ""
+        summary = f"gate PASS {len(ran)}/{len(ran)} stages{suffix} in {wall_ms}ms rc=0"
     else:
         bad = next(r["stage"] for r in results if r["verdict"] == "REFUSED")
-        summary = f"gate REFUSED {bad} in {wall_ms}ms rc={rc}"
+        summary = f"gate {verdict} {bad} in {wall_ms}ms rc={rc}"
     print(summary, file=sys.stderr if args.json else sys.stdout, flush=True)
     if args.json:
         print(json.dumps({"verdict": verdict, "rc": rc, "wall_ms": wall_ms,

@@ -3738,6 +3738,7 @@ def load_config(path):
         with open(path, encoding="utf-8") as fh:
             return json.load(fh)
     except FileNotFoundError:
+        err(f"config {path} not found; using defaults")
         return {}
     except Exception as exc:
         err(f"config {path} unreadable ({type(exc).__name__}: {exc}); using defaults")

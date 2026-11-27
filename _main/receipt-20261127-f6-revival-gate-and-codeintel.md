@@ -104,14 +104,30 @@ classes: SUPPRESS-BROAD-EXCEPT 100 · DEFAULT-PATH-DRIFT 57 · AMBIGUOUS-PROVENA
 `exit 2` is the auditing contract, not a crash: findings were found. `outside-scope 0` and `scratch 0` are the
 two numbers the scorer refuses on, and both are zero here.
 
-**Scoring: `CANNOT-MEASURE why=no-ground-truth-for-sotto`.** There is no adjudicated truth file for this repo,
-and building one from this same run would score the run against itself — the recall number would be circular.
-The honest next slice is adjudicating the 319 rows by hand and publishing precision, exactly as `!watcher` did
-(94.29 % on 35 adjudicated). That slice is **not** claimed here.
+**Scoring, now measured instead of postponed.** 231 of the 319 rows were adjudicated by reading the code
+(`docs/audit/codeintel-worker-20261127.md`, 233 table rows):
+
+| verdict | count |
+|---|---|
+| adjudicated | **231** (134 high + 97 medium, deduped) |
+| REAL | **11** |
+| NOISE | **204** |
+| CANNOT-JUDGE | **16** (all vendored `onnxruntime_genai` `onnx_ir` imports) |
+| fixed in the same pass | 1 (`worker/redux_live.py:3741` now logs the missing-config diagnostic) |
+
+Precision on the adjudicated slice is **11 / 215 = 5,1 %** — the detector's own labels are, in this repo, mostly
+noise: guard clauses it does not model, `**_hidden_kwargs()` supplying `creationflags`, imports that resolve
+through an inserted `sys.path`, and vendored trees. That number is the useful one, and it is why a blanket
+"319 findings" would have been a worthless work list. 88 rows stay unadjudicated:
+`CANNOT-MEASURE why=not-adjudicated` (not zero, not clean).
 
 ## 3. What is still open (named, not hidden)
 
-- **319 findings unadjudicated** — precision/recall stay `CANNOT-MEASURE` until they are read one by one.
+- **88 of the 319 findings unadjudicated** (`CANNOT-MEASURE why=not-adjudicated`); the other 231 carry a
+  verdict in `docs/audit/codeintel-worker-20261127.md`, with 11 REAL named by `file:line`.
+- **The 11 REAL ones are not all fixed**: 6 `SUBPROCESS-NO-TIMEOUT` need a repo-derived timeout chosen
+  deliberately, 2 `SUBPROCESS-NO-CONSOLE` are in vendored code, 2 `DEFAULT-PATH-DRIFT` name targets absent
+  from this tree (the detector is right that the path drifted; where it should point is a decision).
 - **5 declared HOLES** in the angle matrix (`audio-capture/A3` 30-min soak, `codebase/A1` end-to-end lane
   launch, `A11` absent-dependency ladders, `A13` restart recovery, `A18` mock-vs-real). Each names its missing
   population in `harness/angles.tsv`; none can pass.
