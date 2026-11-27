@@ -6,7 +6,7 @@
 - `worktree_land`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py" wt-land --repo . --worktree <wt> --receipt <r.json> --cleanup`
 - `feature_sync`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py" --repo .`
 - `feature_gate`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py" --repo . --gate`
-- `bench_gate`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/benchmark_history.py" run --repo . --label check --gate --blast-radius`
+- `bench_gate`: `python "I:/!watcher/scripts/benchmark_history.py" run --repo . --label check --gate --blast-radius`  # canónico; a cópia da skill (28 589 B) NÃO tem `effective_floor` — ver `_main/_audit-verify-all.cmd` `REVIVAL`
 - `sliders`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/slider_scorecard.py" report --repo .`
 - `friction_gate`: `python "C:/Users/Administrador/.agents/skills/project-revival/scripts/loop_friction_audit.py" measure --repo . --gate`
 - `codeintel_health`: `codeintel health . --panorama --json` (ver `revival/COMMANDS.md` nota: binario ausente = HOLE nomeado)
