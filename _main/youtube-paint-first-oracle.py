@@ -87,7 +87,12 @@ def arm2(src=None):
     # comentario que explica o ramo tambem a escreve, e a primeira versao deste
     # oraculo parava no comentario (ficou vermelho sobre codigo correto -- o defeito
     # classico de ancora gasta).
-    m = re.search(r"thread\.request\(vid, painted=painted\)(.*?)_yt_forget\('track-pending'", s, re.S)
+    # A CHAMADA GANHOU ARGUMENTOS (2026-11-27): `page_ready=` viaja com o
+    # pedido, entao a ancora aceita a lista de argumentos inteira em vez de
+    # fixar a assinatura exacta -- um pin na lista de parametros media a
+    # assinatura, nao o ramo.
+    m = re.search(r"thread\.request\(vid, painted=painted[^)]*\)(.*?)"
+                  r"_yt_forget\('track-pending'", s, re.S)
     if not m:
         say("  FAIL  nao ha ramo `if track is None:` antes de `track-pending`")
         return False, ["ramo ausente"]

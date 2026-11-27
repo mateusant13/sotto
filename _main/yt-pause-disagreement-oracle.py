@@ -259,6 +259,21 @@ def arm_wiring(shell_src):
     witness = re.search(r"witness=\(.*?clock-static.*?\)", shell_src, re.S)
     if not witness or '_paused_proven' not in witness.group(0):
         problems.append('a testemunha da borda nao deriva de _paused_proven')
+    # O ESPELHO NA SHELL CARREGA A MESMA TESTEMUNHA (2026-11-27). Dois
+    # consumidores leem `yt_source_paused`: `external_caption` recusa pixels e
+    # `_caption_idle_hide` apaga. MEDIDO na sessao 11:45:10 do dono: a
+    # atribuicao escrevia a bandeira crua, a aba ficou `dead-tab`, `t` parou de
+    # chegar, `yt_cdp_paused` ficou em True sem prova e o ecra ficou vazio 84 s
+    # com 667 cues na faixa. O espelho tem de ser `_now_paused`, nunca a
+    # bandeira.
+    mirror_raw = re.search(r"yt_source_paused\s*=\s*self\.yt_cdp_paused",
+                           shell_src)
+    if mirror_raw:
+        problems.append('o espelho escreve a bandeira crua '
+                        '(`yt_source_paused = self.yt_cdp_paused`)')
+    if 'yt_source_paused = bool(_now_paused)' not in shell_src:
+        problems.append('o espelho nao carrega a pausa PROVADA '
+                        '(`yt_source_paused = bool(_now_paused)`)')
     return (not problems), '; '.join(problems) or 'uma chamada, um dono'
 
 
@@ -306,6 +321,15 @@ def neg_arm(clock, shell_src):
             ok2, _ = arm_wiring(bad2)
             caught.append(('b-ligacao', not ok2))
             print('NEG-ARM b-ligacao %s' % ('CAUGHT' if not ok2 else 'NOT-CAUGHT'))
+        # M4: o espelho volta a carregar a bandeira crua -- o defeito do dono.
+        bad4 = shell_src.replace('shell.yt_source_paused = bool(_now_paused)',
+                                 'shell.yt_source_paused = self.yt_cdp_paused')
+        if bad4 == shell_src:
+            print('NEG-ARM b-espelho ARM-MISSING')
+        else:
+            ok4, _ = arm_wiring(bad4)
+            caught.append(('b-espelho', not ok4))
+            print('NEG-ARM b-espelho %s' % ('CAUGHT' if not ok4 else 'NOT-CAUGHT'))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     # Um literal apagado do shell tem de derrubar (c), senao o leitor nao le'.
@@ -362,7 +386,7 @@ def neg_arm(clock, shell_src):
               % ('CAUGHT' if not oke2 else 'NOT-CAUGHT'))
     finally:
         T_MATCH_S = _save_t
-    return all(c for _, c in caught) and len(caught) == 9
+    return all(c for _, c in caught) and len(caught) == 10
 
 
 def log_verdict(path, since=None):

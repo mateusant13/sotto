@@ -64,7 +64,10 @@ class FakeThread(object):
         self.track = track
         self.requests = []
 
-    def request(self, vid, painted=None):
+    def request(self, vid, painted=None, page_ready=None):
+        # `page_ready` (2026-11-27): o shell vivo passou a passa-la; um fake
+        # com a assinatura antiga levantava TypeError DENTRO do tick e a arm
+        # media o stub, nao a lei.
         # O CONTRATO MUDOU 2026-11-03: `request` deixou de bloquear e passou a
         # devolver o que JA' ESTIVER PRONTO (`_yt_track_poll`, fire-and-forget).
         # Um stub que devolvesse `None` punha o laco no ramo `track is None` --

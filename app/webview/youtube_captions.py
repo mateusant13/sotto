@@ -182,6 +182,19 @@ NO_TRACK_TTL_S = 3600
 #: the minute.
 PAYLOAD_RETRY_TTL_S = 60
 
+#: AN EMPTY TRACK LIST CAN BE THE PAGE, NOT THE VIDEO (2026-11-27). MEASURED
+#: in the owner's own log (`_main/webview-run.log`, session 11:45:10): the
+#: first ask carried `ready=0 dom_fresh=1.2s` -- the page was still booting --
+#: and `youtube-captions/` stored `YOUTUBE_TRACK_READY state=no-track
+#: reason=no-tracks-listed` for that video. **31 s later the SAME verdict was
+#: served back with `cached=True`** against the 3600 s `NO_TRACK_TTL_S`, and
+#: the screen stayed empty while the CDP reads were fresh (`cdp_age_ms`
+#: 15-172). This is the same class the payload back-off above already fixes:
+#: a transient answer is NOT a verdict about the video. A definite one (the
+#: info came back with tracks and every candidate was refused) keeps the long
+#: TTL; an EMPTY list on an unready page is retried on this cadence.
+NO_TRACK_TRANSIENT_TTL_S = 20
+
 #: A YouTube video id is 11 URL-safe characters.
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
@@ -1001,11 +1014,20 @@ def _cache_path(video_id):
 
 
 def _ttl_for(result):
-    """How long this verdict is good for."""
+    """How long this verdict is good for.
+
+    A verdict about the VIDEO is kept a week; a failure of the READING is not
+    a verdict and gets a short back-off. The three short cases:
+      * `payload-failed` -- the API refused the bytes (measured HTTP 429).
+      * `transient` -- an empty track list on a page that had not loaded, so
+        the list describes the boot, not the video (measured 2026-11-27).
+    """
     if result.get("state") == "has-track":
         return TRACK_TTL_S
     if result.get("reason") == "payload-failed":
         return PAYLOAD_RETRY_TTL_S
+    if result.get("transient"):
+        return NO_TRACK_TRANSIENT_TTL_S
     return NO_TRACK_TTL_S
 
 
@@ -1177,7 +1199,7 @@ def _retry_payload(video_id, stale, timeout):
 
 
 def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
-                player_lang=None, painted=None):
+                player_lang=None, painted=None, page_ready=None):
     """The video's caption track -- THE ONE THE PLAYER IS PAINTING.
 
     Returns a dict:
@@ -1208,8 +1230,15 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
 
     The first call for a video is a network call and takes ~5 s (MEASURED);
     every later call is a disk read. Call it OFF the UI thread.
+
+    `page_ready` says whether the PLAYER PAGE had loaded when this was asked
+    (`video.readyState > 0`, from the CDP snapshot). It is `None` when the
+    caller does not know -- and an unknown readiness keeps the old, long TTL.
+    An EMPTY track list on a page that was NOT ready is the page booting, not
+    a verdict about the video, and it is retried within seconds.
     """
     vid = str(video_id or "").strip()
+    transient = page_ready is not None and not page_ready
     result = {
         "state": "no-track", "cues": [], "lang": None, "source": None,
         "ext": None, "video_id": vid, "duration": None, "reason": None,
@@ -1349,6 +1378,11 @@ def fetch_track(video_id, lang_prefs=("pt", "en"), use_cache=True, timeout=45,
     result["fetched_at"] = time.time()
     if not tracks:
         result["reason"] = "no-tracks-listed"
+        # WHETHER THIS IS A VERDICT IS RECORDED, NOT ASSUMED (2026-11-27). The
+        # caller knows if the page was ready; `fetch_track` here only knows
+        # what the info carried. An empty list when the page was NOT ready is
+        # the page booting, and `_ttl_for` reads this flag to retry it soon.
+        result["transient"] = bool(transient)
         _cache_write(vid, result)
         return result
     # EVERY CANDIDATE IS TRIED, in order, until one yields cues. A refused

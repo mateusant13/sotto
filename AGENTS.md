@@ -235,7 +235,7 @@ BUG-HUNT acima. Os passos, o tracker, o fecho mecanico e as recusas estao na ski
    a **língua escolhida** (default `pt`), e a escolha é um valor **persistido**
    (`app/webview/caption_settings.py` -> `_main/caption-settings.json`, escrito pelo
    menu dos 3 pontos), não um literal. O original é o SEGUNDO pedido, não o primeiro.
-   Portão: `_main/youtube-captions-oracle.py` (66 arms, `--neg-arm` 18/18 mutantes, rc=1).
+   Portão: `_main/youtube-captions-oracle.py` (67 arms, `--neg-arm` 20/20 mutantes, rc=1).
 2. **O NVIDIA NEMOTRON NÃO É TEMPO REAL.** Ele é o motor de transcrição local e o
    atraso dele é medido, não hipotético: não se promete "ao vivo" a partir dele e
    não se desenha caminho que dependa de ele acompanhar o áudio. A legenda que chega
@@ -247,6 +247,46 @@ BUG-HUNT acima. Os passos, o tracker, o fecho mecanico e as recusas estao na ski
    carregado, a transcrição continua a correr e o histórico continua a ser escrito
    (o interruptor e' o `Ctrl+Space`, uma pressao; nao existe HOLD no Alt+C). Nenhum caminho pode desligar
    worker, modelo ou histórico a pretexto de "legenda ao vivo desligada".
+
+## DUAS CEGUEIRAS QUE CONGELARAM O ECRA DELE NA MESMA SESSAO (medido 2026-11-27)
+
+As duas nasceram da sessao de 2026-11-26 11:45:10 (`_main/webview-run.log`), onde o dono
+viu *"subtitles from youtube worked for like 2 seconds and then froze, when i unpaused it
+still did not worked"*. Nenhuma delas era o laco de 4 Hz: as duas eram um veredicto
+escrito cedo demais e lido tarde demais.
+
+- **2026-11-27 · UMA LISTA VAZIA NUMA PAGINA QUE AINDA NAO CARREGOU NAO E' UM VEREDICTO
+  SOBRE O VIDEO.** A primeira pergunta da sessao levou `ready=0 dom_fresh=1.2s` (a pagina
+  a arrancar), a resposta `no-tracks-listed` foi gravada no cache e, lancada com o TTL de
+  `NO_TRACK_TTL_S = 3600`, **31 s depois a MESMA resposta voltou com `cached=True`**
+  (11:45:18.627 -> 11:45:49.177) enquanto as leituras da CDP estavam frescas
+  (`cdp_age_ms` 15-172). E' a MESMA classe que o `payload-failed` ja' curava desde
+  2026-10-19: uma resposta transitoria nao e' um veredicto. O mecanismo: `page_ready` viaja
+  do laco (`_yt_page_ready`, que le' `rs` do snapshot da CDP) -> `YoutubeTrackThread.request`
+  -> `fetch_track`, e um `page_ready is False` grava `transient=True`; `_ttl_for` devolve
+  `NO_TRACK_TRANSIENT_TTL_S = 20` para esse caso e **mantem os 3600 s para o veredicto de
+  verdade**. `page_ready=None` (a fonte nao soube responder) mantem o comportamento antigo:
+  uma prontidao nao medida nunca vira veredicto. Portao: `_main/youtube-captions-oracle.py`
+  arm `a65` (tres prontidoes x os dois TTLs, e os tres ids TEM de ser fetches reais, nao
+  cache hits) + mutantes `a-transient-empty-list-becomes-a-verdict` e
+  `an-unknown-readiness-loses-the-long-ttl`; 67 arms, 20/20 mutantes, rc=1.
+- **2026-11-27 · O ESPELHO `yt_source_paused` CARREGA A PAUSA PROVADA, NUNCA A BANDEIRA.**
+  O comentario do proprio sitio ja' exigia a pausa provada e a atribuicao escrevia
+  `self.yt_cdp_paused` -- a bandeira CRUA. Dois consumidores leem esse espelho
+  (`external_caption` recusa pixels, `_caption_idle_hide` apaga) e ambos passavam a ver o
+  que a borda ja' tinha recusado. MEDIDO na mesma sessao: depois de uma troca de video a
+  aba ficou `dead-tab`, `t` parou de chegar, `yt_cdp_paused` ficou em True sem prova e o
+  ecra ficou vazio **84 s** (11:46:44.747 `CAPTION_WINDOW_BLANKED
+  reason=youtube-paused-or-ended`) com **667 cues** na faixa. A cura e' a testemunha unica:
+  `shell.yt_source_paused = bool(_now_paused)`, e `_now_paused` deriva de
+  `youtube_clock.pause_proven`. Portao: `_main/yt-pause-disagreement-oracle.py` arm
+  `b-ligacao` (que agora recusa a forma crua por regex e exige a forma provada) + mutante
+  `b-espelho`; `NEG-ARM VERDICT: PASS`, 10 mutantes, rc=1.
+- **A licao que vale para qualquer cache deste repo:** um valor em cache e' uma AFIRMACAO
+  sobre o instante em que foi medido, e o TTL e' a afirmacao sobre quanto tempo essa
+  afirmacao vale. Um TTL longo so' se justifica quando a coisa medida e' propriedade do
+  OBJETO (o video tem estes cues), nunca quando e' propriedade da TENTATIVA (a pagina
+  respondeu isto agora).
 
 ## DUAS ORDENS DE 2026-11-08: O TECTO DE FRAME E O `>>` DO PLAYER
 

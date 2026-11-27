@@ -333,7 +333,10 @@ class FakeTrackThread(object):
             return None
         return self.track
 
-    def request(self, video_id, painted=None):
+    def request(self, video_id, painted=None, page_ready=None):
+        # `page_ready` (2026-11-27): o shell vivo passou a passa-la, e um
+        # fake com a assinatura antiga levantava TypeError DENTRO do tick --
+        # a arm media o stub, nao a lei.
         self.requested.append(video_id)
         self.painted = list(painted or [])
         if self.track is None or self.track_for != video_id:

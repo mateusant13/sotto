@@ -220,7 +220,8 @@ class _FakeThread:
     def current(self, video_id):
         return self.track
 
-    def request(self, video_id, painted=None):
+    def request(self, video_id, painted=None, page_ready=None):
+        # `page_ready` (2026-11-27): ver a nota no irmao track-wiring.
         self.asked.append((video_id, len(painted or [])))
         return self.track
 

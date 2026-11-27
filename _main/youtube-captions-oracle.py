@@ -1031,6 +1031,59 @@ def battery(mod, path, workdir, source):
     attempt("a45 um payload REFUSADO (429) da no-track e nao repete a rede "
             "no poll seguinte", a45)
 
+    def a65():
+        # AN EMPTY TRACK LIST ON A PAGE THAT HAD NOT LOADED IS NOT A VERDICT
+        # ABOUT THE VIDEO (2026-11-27). MEASURED in the owner's log, session
+        # 11:45:10: the first ask carried `ready=0 dom_fresh=1.2s`, the
+        # `no-tracks-listed` answer was stored, and 31 s later the SAME answer
+        # came back `cached=True` while the player was fine -- the screen
+        # stayed empty. The arm drives the three readiness values through the
+        # REAL `_ttl_for` and the real cache, and requires that the short TTL
+        # belongs to the boot alone.
+        cache = os.path.join(workdir, "cache65")
+        old = mod.CACHE_DIR
+        mod.CACHE_DIR = cache
+        try:
+            empty = {"subtitles": {}, "automatic_captions": {}}
+            # THREE DISTINCT VIDEO IDS: the cache is keyed by video, so reusing
+            # one would answer the third call from the second one's entry and
+            # the `unknown` line would never execute (measuring the cache
+            # instead of the readiness rule -- this arm's own first draft).
+            vid_boot, vid_ok, vid_unknown = (
+                "aqz-KE-bpKQ", "dQw4w9WgXcQ", "1WnKCj1_5rI")
+            _fake_fetch(mod, empty, FIXTURE_JSON3)
+            boot = mod.fetch_track(vid_boot, page_ready=False)
+            verdict = mod.fetch_track(vid_ok, page_ready=True)
+            unknown = mod.fetch_track(vid_unknown, page_ready=None)
+            ttl_boot = mod._ttl_for(boot)
+            ttl_verdict = mod._ttl_for(verdict)
+            ttl_unknown = mod._ttl_for(unknown)
+            ok = (boot["state"] == "no-track"
+                  and boot["reason"] == "no-tracks-listed"
+                  and boot.get("transient") is True
+                  and ttl_boot == mod.NO_TRACK_TRANSIENT_TTL_S
+                  and ttl_boot < mod.NO_TRACK_TTL_S
+                  and verdict.get("transient") is False
+                  and ttl_verdict == mod.NO_TRACK_TTL_S
+                  and unknown.get("transient") is False
+                  and ttl_unknown == mod.NO_TRACK_TTL_S
+                  # each of the three was a REAL fetch, not a cache hit
+                  and not (boot.get("cached") or verdict.get("cached")
+                           or unknown.get("cached"))
+                  # a real track is never "transient", whatever the readiness
+                  and mod._ttl_for({"state": "has-track", "transient": True})
+                  == mod.TRACK_TTL_S)
+            return ok, ("boot=%rs/%r verdict=%rs unknown=%rs has-track=%rs"
+                        % (ttl_boot, boot.get("transient"),
+                           ttl_verdict, ttl_unknown,
+                           mod._ttl_for({"state": "has-track",
+                                         "transient": True})))
+        finally:
+            mod.CACHE_DIR = old
+    attempt("a65 uma lista vazia numa pagina que ainda NAO carregou e' a "
+            "pagina a arrancar, nao um veredicto: retry curto, e o veredicto "
+            "de verdade guarda o TTL longo", a65)
+
     def a46():
         # After the short back-off, the retry asks for the TRACK again and
         # NOT for the whole video: the 5 s extract is not repeated.
@@ -1358,6 +1411,16 @@ MUTANTS = [
     # (era o desenho de 2026-10-21, quando a traducao entre os tres era a
     # politica). Sem este mutante, "a escolha nao quebra a regra" seria uma
     # frase que ninguem prova que esta' no codigo.
+    # 2026-11-27: uma lista vazia numa pagina que nao carregou passa a ser
+    # `transient` (retry em 20 s) em vez de um veredicto de uma hora. Os dois
+    # mutantes quebram UMA metade cada: sem o primeiro, o retry curto nunca
+    # entra; sem o segundo, o desconhecido perde o TTL longo.
+    ("a-transient-empty-list-becomes-a-verdict",
+     "    if result.get(\"transient\"):\n        return NO_TRACK_TRANSIENT_TTL_S\n",
+     ""),
+    ("an-unknown-readiness-loses-the-long-ttl",
+     "    transient = page_ready is not None and not page_ready",
+     "    transient = not page_ready"),
     ("the-explicit-pick-wins-over-the-rule",
      "    if not orig:\n"
      "        # Without the video's own language the rule cannot speak at all, and the\n"

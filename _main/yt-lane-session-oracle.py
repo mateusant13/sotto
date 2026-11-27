@@ -247,6 +247,17 @@ def arm_real_chrome():
                 return 'CANNOT-MEASURE', 'why=player-not-decided ' + refusal[0]
             return False, 'rc=3 but no named refusal: %s' % refusal[0][:90]
         verdict = 'refused by name rc=3'
+    elif rc == 1:
+        # UM `LANE-YT FAIL` COM O DEFEITO NOMEADO E' UM RESULTADO, NAO UM CRASH
+        # (measured 2026-11-27). O instrumento devolve rc=0 mesmo quando a linha
+        # dele e' `LANE-YT FAIL why=teardown-leak survivors=...`, e a arm lia so'
+        # o rc -- contava como "rc inesperado" um defeito que o instrumento JA'
+        # tinha nomeado. A regra da casa: uma recusa/defeito NOMEADO e' medido
+        # pelo nome. Uma linha sem `why=` continua a ser incoerencia.
+        fails = [l for l in out.splitlines() if l.startswith('LANE-YT FAIL')]
+        if not fails or 'why=' not in fails[0]:
+            return False, 'rc=1 without a named defect line'
+        return False, 'named defect: ' + fails[0][:110]
     else:
         return False, 'rc=%d (expected 0 with playback or 3 with a named refusal)' % rc
     if 'LANE-YT teardown pid=' not in out or 'lane_chrome_left=0' not in out:

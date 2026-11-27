@@ -271,6 +271,15 @@ def connect_page(port):
     return ws, tab
 
 
+#: How long a killed lane Chrome gets to actually leave the process table.
+#: MEASURED 2026-11-27: `kill()` returned and the very next scan still listed
+#: three children that were `NoSuchProcess` seconds later -- a bounded drain is
+#: the difference between a leak and a reap in flight. The window is small on
+#: purpose: a real survivor is still there after 3 s.
+TEARDOWN_DRAIN_S = 3.0
+TEARDOWN_DRAIN_TICK_S = 0.1
+
+
 def profile_pids(profile):
     """Only processes whose OWN command line contains this exact profile path."""
     import psutil
@@ -313,7 +322,18 @@ def teardown(proc, profile, created, err_path):
             child.wait(timeout=3)
         except Exception:
             pass
+    # A KILLED PROCESS IS NOT A GONE PROCESS (measured 2026-11-27). `kill()`
+    # returns before the kernel has reaped it, so an immediate re-scan reports
+    # survivors that have already exited: measured on this box,
+    # `survivors=18228,29708,32588` at teardown and all three `NoSuchProcess`
+    # seconds later. A false leak FAILS the whole oracle (`rc=1 where the
+    # contract allows 0 or 3`), so the drain is bounded and NAMED rather than a
+    # bare retry loop.
+    _drain_deadline = time.monotonic() + TEARDOWN_DRAIN_S
     survivors = [p.info['pid'] for p in profile_pids(profile)]
+    while survivors and time.monotonic() < _drain_deadline:
+        time.sleep(TEARDOWN_DRAIN_TICK_S)
+        survivors = [p.info['pid'] for p in profile_pids(profile)]
     removed = False
     if created:
         shutil.rmtree(profile, ignore_errors=True)

@@ -3667,6 +3667,10 @@ class YouTubeTrackThread(threading.Thread):
         #: A fetch whose video nobody asks about anymore. It is not published
         #: as THE track, and it does not arm the next window.
         self.dropped = 0
+        #: Did the PLAYER PAGE have loaded when the last ask happened?
+        # `None` = the loop side did not say, and an unknown readiness
+        # keeps the long TTL (see `youtube_captions._ttl_for`).
+        self.page_ready = None
 
     @staticmethod
     def _paint_key(painted):
@@ -3675,7 +3679,7 @@ class YouTubeTrackThread(threading.Thread):
             return ''
         return ' '.join(str(w) for w in painted)[:200]
 
-    def request(self, video_id, painted=None):
+    def request(self, video_id, painted=None, page_ready=None):
         """Ask for this video's track -- FIRE AND FORGET. NEVER blocks.
 
         Returns the track when one is ALREADY here for this video, and None
@@ -3704,6 +3708,15 @@ class YouTubeTrackThread(threading.Thread):
         vid = str(video_id or '')
         key = self._paint_key(painted)
         now = time.monotonic()
+        # WHETHER THE PAGE HAD LOADED WHEN THIS WAS ASKED (2026-11-27).
+        # MEASURED in the owner's log: the first ask carried
+        # `ready=0 dom_fresh=1.2s` (page still booting), the empty track
+        # list it produced was cached as a VERDICT about the video, and
+        # 31 s later that verdict came back `cached=True` while the
+        # player was fine. An unknown readiness stays `None` and keeps
+        # the old, long TTL.
+        if page_ready is not None:
+            self.page_ready = bool(page_ready)
         with self.lock:
             new_video = vid != self.want
             if vid != self.track_for:
@@ -3762,7 +3775,9 @@ class YouTubeTrackThread(threading.Thread):
         error = None
         try:
             import youtube_captions
-            track = youtube_captions.fetch_track(video_id, painted=paint)
+            track = youtube_captions.fetch_track(
+                video_id, painted=paint,
+                page_ready=getattr(self, 'page_ready', None))
         except Exception as exc:  # noqa: BLE001
             error = exc
         with self.lock:
@@ -5926,7 +5941,20 @@ class ExternalCaptionWatcher(threading.Thread):
                 # seguinte.
                 shell = getattr(self, 'shell', None)
                 if shell is not None:
-                    shell.yt_source_paused = self.yt_cdp_paused
+                    # O ESPELHO CARREGA A PAUSA PROVADA, NAO A BANDEIRA
+                    # (2026-11-27). O comentario acima ja' o exigia --
+                    # "a pausa que apaga e' a PROVADA, e so' ela" -- e a
+                    # atribuicao escrevia a bandeira crua. MEDIDO na
+                    # sessao 11:45:10 do dono: depois de uma troca de
+                    # video a aba ficou `dead-tab`, `t` parou de chegar,
+                    # o `yt_cdp_paused` ficou em True sem prova nenhuma e
+                    # este espelho manteve o ecra vazio 84 s com 667
+                    # cues na faixa (`CAPTION_WINDOW_BLANKED
+                    # reason=youtube-paused-or-ended` as 11:46:44.747).
+                    # Os dois consumidores (`external_caption` recusa
+                    # pixels, `_caption_idle_hide` apaga) passam a ver a
+                    # mesma testemunha que a borda usa.
+                    shell.yt_source_paused = bool(_now_paused)
                     shell.yt_source_ended = self.yt_cdp_ended
                 if getattr(self, '_yt_was_paused', False) and not _now_paused:
                     _since = getattr(self, '_yt_pause_since', None)
@@ -6148,6 +6176,32 @@ class ExternalCaptionWatcher(threading.Thread):
         except Exception:                 # noqa: BLE001
             return False
 
+    def _yt_page_ready(self):
+        """Did the PLAYER PAGE load? `True`/`False`, or `None` if unknown.
+
+        `video.readyState` (`rs` in the CDP snapshot) is the witness: 0 means
+        the element exists with no media yet, so a caption list read at that
+        instant describes the BOOT, not the video. MEASURED 2026-11-27 in the
+        owner's log: `ready=0 dom_fresh=1.2s` at 11:45:11 and the empty track
+        list was then served back `cached=True` 31 s later.
+        A source that cannot answer returns `None` and the caller keeps the
+        old behaviour -- an unmeasured readiness is never a verdict.
+        """
+        source = getattr(self, '_yt_cdp_source', None)
+        if not source or source is False:
+            return None
+        try:
+            snap = source.snapshot(max_age=self.DOM_FRESH_S)
+        except Exception:                 # noqa: BLE001
+            return None
+        if not isinstance(snap, dict):
+            return None
+        rs = snap.get('rs')
+        if isinstance(rs, bool) or not isinstance(rs, (int, float)):
+            return None
+        return float(rs) > 0.0
+
+
     def _yt_track_poll(self, thread, vid, painted):
         """O pedido da faixa: FIRE AND FORGET, e o DOM decide se ele existe.
 
@@ -6168,7 +6222,8 @@ class ExternalCaptionWatcher(threading.Thread):
                 track = thread.current(vid)
                 why = 'dom'
             else:
-                track = thread.request(vid, painted=painted)
+                track = thread.request(vid, painted=painted,
+                                      page_ready=self._yt_page_ready())
                 why = 'paint' if painted else 'pending'
         except Exception as exc:          # noqa: BLE001
             log(f'YOUTUBE_TRACK_POLL_FAILED video_id={vid} error={exc!r}')
@@ -6631,8 +6686,13 @@ class ExternalCaptionWatcher(threading.Thread):
             # A SEGUNDA TESTEMUNHA: a faixa e' o que diz se a pintura parada
             # esta' velha. Uma vez por assinatura -- nao uma vez por tick.
             try:
+                _rs = snap.get('rs')
+                _ready = (None if isinstance(_rs, bool)
+                          or not isinstance(_rs, (int, float))
+                          else float(_rs) > 0.0)
                 thread.request(vid, painted=[w for line in rows
-                                             for w in str(line).split()])
+                                             for w in str(line).split()],
+                               page_ready=_ready)
             except Exception as exc:      # noqa: BLE001
                 log(f'YOUTUBE_PAINT_STALL_ASK_FAILED error={exc!r}')
             return None
