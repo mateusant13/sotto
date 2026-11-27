@@ -42,6 +42,9 @@ Usage:
                                                       # the log dedupe removed
 """
 import argparse
+
+import ast
+
 import importlib.util
 import inspect
 import os
@@ -364,20 +367,54 @@ def arm_dedupe_ttl(mod, fetcher, failures):
                         '%d fetches -- the clock was read as a new question' % runs)
 
 
+def _fetch_call_owners(source):
+    """`(linha, dono)` de cada chamada a `fetch_track` no fonte.
+
+    O texto da chamada mudou (a chamada passou a ocupar varias linhas), mas a
+    pergunta do oraculo nunca foi como ela esta' escrita: e' QUEM a chama.
+    """
+    tree = ast.parse(source)
+    parent = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[child] = node
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = (func.attr if isinstance(func, ast.Attribute)
+                else func.id if isinstance(func, ast.Name) else '')
+        if name != 'fetch_track':
+            continue
+        owner = None
+        node_parent = parent.get(node)
+        while node_parent is not None:
+            if isinstance(node_parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                owner = node_parent.name
+                outer = parent.get(node_parent)
+                while outer is not None:
+                    if isinstance(outer, ast.ClassDef):
+                        owner = outer.name + '.' + owner
+                        break
+                    outer = parent.get(outer)
+                break
+            node_parent = parent.get(node_parent)
+        found.append((node.lineno, owner or '<module>'))
+    return found
+
+
 def arm_struct(mod, failures):
     """ARM 6: the real source says who may call fetch_track."""
     source = inspect.getsource(mod)
-    hits = [i + 1 for i, line in enumerate(source.splitlines())
-            if 'fetch_track(' in line and not line.lstrip().startswith('#')]
+    hits = _fetch_call_owners(source)
     note('STRUCT  fetch_track( call sites in the shell: %d %s', len(hits), hits)
     if len(hits) != 1:
         failures.append('STRUCT: %d call(s) to fetch_track in the shell (%s); the '
                         'loop must have none' % (len(hits), hits))
-    else:
-        fetch_line = source.splitlines()[hits[0] - 1]
-        if 'youtube_captions.fetch_track(video_id' not in fetch_line:
-            failures.append('STRUCT: the only fetch_track call is not the thread\'s: '
-                            '%r' % fetch_line.strip())
+    elif hits[0][1] != 'YouTubeTrackThread._fetch':
+        failures.append("STRUCT: the only fetch_track call is not the thread's: "
+                        'line %d owned by %s' % hits[0])
     loop = inspect.getsource(mod.ExternalCaptionWatcher._youtube)
     if '_yt_track_poll(' not in loop:
         failures.append('STRUCT: _youtube does not go through _yt_track_poll')

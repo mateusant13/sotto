@@ -62,8 +62,13 @@ PID_ARG_RE = re.compile(r"target_pid=\s*([^\s,)]*)")
 #: A mutacao do mutante C: de `target_pid=<expr>` ate' o `)` que fecha a
 #: chamada na MESMA linha (as quatro sao de uma linha so'). O `)` final fica.
 LADDER_PID_RE = re.compile(r"(" + re.escape(LADDER_PID_ARG) + r")[^\n]*\)")
-CTYPES_GUARD = "import ctypes\r\n_PLP_DWORD = ctypes.c_ulong"
-CTYPES_GUARD_LF = "import ctypes\n_PLP_DWORD = ctypes.c_ulong"
+#: A linha de importacao ganhou um comentario `# noqa: E402`; casar o texto
+#: inteiro (como antes) fazia o mutante B desaparecer e o braco devolver rc=2
+#: (DECORATIVE) sem medir nada. O que importa e' que a DEFINICAO de `_PLP_DWORD`
+#: tenha o `ctypes` importado: e' isso que o mutante remove.
+CTYPES_IMPORT_RE = re.compile(
+    r"^import ctypes\b[^\n]*\n(?=_PLP_DWORD = ctypes\.c_ulong)", re.M)
+
 
 failures = []
 
@@ -295,22 +300,19 @@ def neg_arm():
                 problems.append("mutant C SURVIVED -- the gate is blind here: %s" % failed_c)
 
         # MUTANT B -- the module-level ctypes import removed (today's real defect).
-        # The anchor is the same text in either EOL: exactly ONE occurrence must
-        # be found across both spellings.
-        variants = [(CTYPES_GUARD, live_text.count(CTYPES_GUARD)),
-                    (CTYPES_GUARD_LF, live_text.count(CTYPES_GUARD_LF))]
-        total_hits = sum(h for _, h in variants)
-        if total_hits != 1:
+        # Remove a linha de importacao (qualquer comentario a seguir) e deixa a
+        # definicao que a usa: o modulo tem de morrer com NameError.
+        mutated_b, hits_b = CTYPES_IMPORT_RE.subn("", live_text)
+        if hits_b != 1:
             decorative += 1
             problems.append("mutant B anchor %s (%d hit(s)) -- DECORATIVE, not counted"
-                            % ("MISSING" if total_hits == 0 else "AMBIGUOUS", total_hits))
+                            % ("MISSING" if hits_b == 0 else "AMBIGUOUS", hits_b))
             print("  FAIL mutant B anchor %s (%d hit(s)) -- DECORATIVE, not counted"
-                  % ("MISSING" if total_hits == 0 else "AMBIGUOUS", total_hits))
+                  % ("MISSING" if hits_b == 0 else "AMBIGUOUS", hits_b))
         else:
-            anchor = next(a for a, h in variants if h == 1)
             path_b = os.path.join(tmpdir, "mutant-b-ctypes-worker.py")
             with open(path_b, "w", encoding="utf-8", newline="") as fh:
-                fh.write(live_text.replace(anchor, "_PLP_DWORD = ctypes.c_ulong", 1))
+                fh.write(mutated_b)
             try:
                 load_module(path_b, "_plp_neg_ctypes_worker")
                 ok = False

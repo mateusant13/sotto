@@ -305,6 +305,34 @@ class _PlayerCue:
         #: de um incidente cita: sem ele, "congelou" continua a ser impressao.
         self.held_s = 0.0
 
+
+    def update(self, rows, t, at=None, rate=None):
+        """A MESMA cue com mais palavras: troca a janela, NAO reinicia o relogio.
+
+        O produtor publica a frase a crescer (`Riptide's`, `Riptide's one`,
+        ...) com o MESMO `start`; cada publicacao nova e' a mesma cue, nao uma
+        cue nova. Sem isto `_cue_from` criava um `_PlayerCue` por publicacao e
+        `_log_land` escrevia `CAPTION_LAND cue_t0=...` varias vezes para o mesmo
+        carimbo -- o oraculo le um land por cue e recusa o log como mentiroso.
+        O `first_paint_t`/`logged` ficam: a PRIMEIRA pintura continua a ser a
+        primeira, mesmo depois de mais palavras chegarem.
+        """
+        self.rows = []
+        for row in rows or ():
+            if isinstance(row, dict):
+                self.rows.append(dict(row))
+            elif str(row or "").strip():
+                self.rows.append({"text": str(row), "end": None,
+                                  "words": [], "cap": None})
+        self.t = float(t)
+        self.at = time.monotonic() if at is None else float(at)
+        if rate is not None:
+            try:
+                rate = float(rate)
+            except (TypeError, ValueError):
+                rate = 1.0
+            self.rate = rate if 0.05 <= rate <= 16.0 else 1.0
+
     def clock(self, now=None):
         now = time.monotonic() if now is None else float(now)
         gap = max(0.0, now - self.at)
@@ -1858,6 +1886,13 @@ class NativeCaptionOverlay:
             # `CAPTION_CUE_INVALID`, so' que silencioso.
             self.log('CAPTION_CUE_EMPTY t=%.3f' % t)
             return None
+        if (old is not None
+                and abs(new.cue_t0 - old.cue_t0) <= 0.05
+                and new.t >= old.t - 0.05):
+            # A MESMA CUE A CRESCER, nao um resync: mantem o carimbo da primeira
+            # pintura e as palavras ja' reveladas, e troca so' a janela lida.
+            old.update(rows, new.t, at=at, rate=new.rate)
+            return old
         if old is not None and new.cue_t0 + 0.05 >= old.cue_t0:
             new.floor = old.clock()
         # O CUE QUE NUNCA CHEGOU A PINTAR: conta-se, nao se esconde (o
