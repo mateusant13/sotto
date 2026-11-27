@@ -502,8 +502,21 @@ def main():
         evs += f.push("▁alpha bravo charlie delta", 0.0, 1.0)
         evs += f.push("▁echo foxtrot", 1.0, 2.0)
         abertas = [str(t) for t, _c in (f._words or ())]
-        trasportou = bool(abertas) and abertas[0].lstrip("▁").startswith("")
         depois = f.line()
+        # O QUE SE PROVA, e nao o que se repete (medido 2026-11-27).
+        # A forma antiga era `abertas[0].lstrip("▁").startswith("")` -- e
+        # `.startswith("")` e' SEMPRE verdade, logo o braco so' perguntava "a
+        # lista esta' vazia?", nunca "a cauda foi transportada". Um vazio na
+        # primeira linha passava a verde.
+        # A cauda tem de ser um SUFIXO PROPRIO e NAO VAZIO do texto que a
+        # primeira linha transportava (o que nao coube no teto de caracteres),
+        # e a linha seguinte tem de comecar por ela -- as duas coisas, porque
+        # cada uma sozinha tem um mutante que sobrevive.
+        primeira = "alpha bravo charlie delta"
+        cauda = abertas[0].lstrip("▁") if abertas else ""
+        trasportou = (bool(cauda) and cauda != primeira
+                      and primeira.endswith(cauda)
+                      and depois.startswith(cauda))
     except Exception as exc:  # noqa: BLE001
         abertas, trasportou, depois = ["<erro %r>" % (exc,)], False, ""
     arm("a linha seguinte comeca pelo texto transportado, nao pelo vazio",

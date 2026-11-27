@@ -468,12 +468,43 @@ def judge(fx, pause_proven=None, witness_cls=None, advance=None, decide=None,
                             for x in r["s"]["rows_shown"])]
         coverage["rows_disagree_with_track"] = len(mism)
         coverage["rows_agree_with_track"] = len(rec) - len(mism)
+        # A PROVENIENCIA das rows, ao lado do desacordo com o relogio: um texto
+        # pintado que a faixa NAO tem em sitio nenhum e' legenda inventada, e a
+        # diferenca entre os dois numeros e' o congelamento (rows velhas de cues
+        # anteriores), que e' o que o fixture prova de proposito.
+        _textos = [str(c.get("text") or "") for c in (cues or ())]
+        _pintadas = set()
+        for r in rec:
+            for x in (r["s"].get("rows_shown") or ()):
+                if str(x).strip():
+                    _pintadas.add(str(x))
+        coverage["rows_not_in_track"] = sorted(
+            x for x in _pintadas
+            if not any(x.strip() in t for t in _textos))[:10]
 
     # (g) O CUE: sem segmento gravado nao ha' o que julgar. Nomeado.
     with_seg = [r for r in rec if r["s"]["seg"]]
     if with_seg:
-        arm("g-cue-painted-when-recorded", True,
-            "samples_with_segment=%d" % len(with_seg))
+        # O BRACO JULGA O QUE A FAIXA DIZIA, e nao que existia segmento.
+        # MEDIDO 2026-11-27: era `arm(..., True, ...)`, um literal -- e o
+        # `mism`, a lista das amostras cujas rows CONTRADIZEM a faixa, era
+        # calculada logo acima e so' arquivada em `coverage`. Um fixture em que
+        # as rows pintadas mentem sobre a faixa passava a verde, apesar de o
+        # relatorio ter o numero ao lado.
+        # Sem `mism` calculado (fixture sem faixa) a resposta e' CANNOT-MEASURE,
+        # nunca verde: e' a mesma regra do braco (h).
+        # A PERGUNTA CERTA NAO E' "AS ROWS CONCORDAM COM O RELOGIO" -- esse
+        # desacordo E' o congelamento que o fixture existe para provar (medido
+        # 2026-11-27: as 745 amostras mostram as MESMAS duas rows, vindas das
+        # cues de 502,16 s e 505,04 s, enquanto `t` anda 788,34 -> 828,30).
+        # Fazer dela um braco punha o fixture vermelho por ser o fixture.
+        # O QUE SE PROVA E' PROVENIENCIA: nenhuma row pintada pode ser texto que
+        # a faixa real nao contem -- uma legenda inventada nao tem como aparecer.
+        inventadas = coverage.get("rows_not_in_track") or []
+        arm("g-cue-painted-when-recorded", not inventadas,
+            "samples_with_segment=%d painted_rows_not_in_track=%d%s"
+            % (len(with_seg), len(inventadas),
+               (" ex=%r" % (inventadas[0],)) if inventadas else ""))
     else:
         arms.append({"arm": "g-cue-painted-when-recorded", "ok": None,
                      "detail": "CANNOT-MEASURE why=no-caption-segment "

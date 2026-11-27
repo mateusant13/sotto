@@ -442,7 +442,11 @@ class Gate(object):
             db, dh = sha16(disk)
             rows.append('%s %d/%s vs %d/%s' % (label, fb, fh[:12], db, dh[:12]))
             self.check('H1 %s IS the generator output' % label, fh == dh, rows[-1])
-        self.check('H2 the generator is the source of both documents', True, '; '.join(rows))
+        # H2 ERA `self.check(..., True, ...)`: um literal que so' repetia por
+        # palavras os dois hashes de H1, e que nenhuma mutacao podia derrubar.
+        # Medido 2026-11-27: `rows` continua a ser impresso como RECIBO -- o que
+        # sai e' a asercao que nunca podia falhar, nao a informacao.
+        print('H2 generator is the source of both documents: %s' % '; '.join(rows))
 
 
 HARNESS = """# -*- coding: utf-8 -*-

@@ -398,8 +398,12 @@ def run(path, report_path, refresh):
     arm('sem-desenho-sem-placa', not bare.get('plate'),
         f'plate={bare.get("plate")} face={bare.get("fontFamily")}')
 
-    # A1: a populacao
-    arm('payloads', True, f'{len(payloads)} payloads de {len(payloads)}')
+    # A1: a populacao JA' FOI JULGADA -- `_fail(..., 'report carries no brand
+    # payloads')` e o piso `POPULATION_FLOOR` decidem antes desta linha chegar
+    # aqui, e um literal `True` nao acrescenta um segundo juiz: e' um RECIBO.
+    # Medido 2026-11-27: como braco nunca podia ficar vermelho, e um braco que nao
+    # pode ficar vermelho conta como cobertura sem ser. Fica a linha de relatorio.
+    print('payloads: %d de %d' % (len(payloads), len(payloads)))
 
     # A9 -- A JANELA NASCE VESTIDA (2026-11-09). O defeito medido no log do dono
     # era este caminho: 215 criacoes, todas `REPLAYED theme=youtube brand='-'`, e
