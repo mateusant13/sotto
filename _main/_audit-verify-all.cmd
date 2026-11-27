@@ -1550,6 +1550,21 @@ if exist _main\yt-capture-replay-oracle.py (
 call :step red-as-expected-yt-capture-replay 1 "_main\yt-capture-replay-oracle.py;app\webview\youtube_clock.py;app\webview\youtube_monotonic.py" "%OUT%\yt-capture-replay-neg.log" python _main\yt-capture-replay-oracle.py --neg-arm
 call :expectred red-as-expected-yt-capture-replay !STEP_RC! "%OUT%\yt-capture-replay-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-yt-capture-replay MISSING "%OUT%\yt-capture-replay-neg.log" "NEG-ARM: PASS" )
+REM `youtube-clock-property` -- CAMADA 3 do protocolo de 5 camadas. As outras
+REM provam EXEMPLOS; esta prova AFIRMACOES sobre todos os valores de
+REM `app/webview/youtube_clock.py` (parado nao anda, sem resposta nao ha inercia,
+REM a pausa exige testemunha fresca, e o que nos adiantamos e nosso para
+REM desfazer), com `hypothesis` como gerador. Medido 2026-11-27: `prop=0` em 596
+REM funcoes de teste antes deste passo. O braco negativo troca o PREDICADO de
+REM cada contrato pelo seu defeito historico e exige a propriedade vermelha.
+if exist _main\youtube-clock-property-oracle.py (
+call :step youtube-clock-property 0 "_main\youtube-clock-property-oracle.py;app\webview\youtube_clock.py" "%OUT%\youtube-clock-property.log" python _main\youtube-clock-property-oracle.py
+call :record youtube-clock-property !STEP_RC!
+) else ( call :record youtube-clock-property MISSING )
+if exist _main\youtube-clock-property-oracle.py (
+call :step red-as-expected-youtube-clock-property 1 "_main\youtube-clock-property-oracle.py;app\webview\youtube_clock.py" "%OUT%\youtube-clock-property-neg.log" python _main\youtube-clock-property-oracle.py --neg-arm
+call :expectred red-as-expected-youtube-clock-property !STEP_RC! "%OUT%\youtube-clock-property-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-youtube-clock-property MISSING "%OUT%\youtube-clock-property-neg.log" "NEG-ARM: PASS" )
 REM `yt-headless-paint` (a metade dos PIXEIS, fora do ecra: o bitmap GDI+ real
 REM de `overlay_paint._layout`, lido por `LockBits`). Nao abre janela nem
 REM dispositivo -- o proprio passo imprime `windows_opened=0` -- logo NAO e' heavy.
