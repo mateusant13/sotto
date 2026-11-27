@@ -29,6 +29,16 @@ import tempfile
 CANON = r"C:\Users\Administrador\.agents\skills\project-revival\scripts\feature_map_sync.py"
 
 
+def _startupinfo():
+    """O par que esconde a janela: STARTF_USESHOWWINDOW + wShowWindow=SW_HIDE."""
+    if os.name != "nt":
+        return None
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0
+    return si
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     canon = argv[0] if argv else CANON
@@ -43,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         proc = subprocess.run(
             [sys.executable, canon, "--repo", tmp, "--gate", "--no-agents"],
             capture_output=True, text=True, timeout=120,
+            startupinfo=_startupinfo(),
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         out = (proc.stdout or "") + (proc.stderr or "")

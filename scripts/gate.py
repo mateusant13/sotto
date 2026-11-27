@@ -65,6 +65,17 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 RUNTIME = Path(os.environ.get("SOTTO_RUNTIME", "H:/sotto"))
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
+
+def _startupinfo():
+    """CREATE_NO_WINDOW sozinho nao basta: o par inclui STARTF_USESHOWWINDOW."""
+    if os.name != "nt":
+        return None
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    si.wShowWindow = 0
+    return si
+
 REVIVAL = Path(os.environ.get("SOTTO_REVIVAL_SCRIPTS",
                               "C:/Users/Administrador/.agents/skills/project-revival/scripts"))
 ARTIFACT_TOOL = Path("I:/!watcher/tools/artifact-manifest.py")
@@ -136,6 +147,7 @@ def run(argv: list[str], cwd: Path, seconds: float) -> tuple[int, str, int, bool
     try:
         p = subprocess.run(argv, cwd=str(cwd), capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=seconds,
+                           startupinfo=_startupinfo(),
                            creationflags=NO_WINDOW)
     except subprocess.TimeoutExpired:
         return 124, f"CANNOT-MEASURE timeout after {seconds:.0f}s", \

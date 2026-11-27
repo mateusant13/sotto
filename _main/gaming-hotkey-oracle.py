@@ -702,6 +702,41 @@ _GESTURE = [None]
 # ---------------------------------------------------------------------------
 # A CORRIDA
 # ---------------------------------------------------------------------------
+def process_names_primitive(source):
+    """UM snapshot por enumeracao, NENHUM handle por pid -- lido do AST, sem relogio.
+
+    O racio tick/enumeracao NAO e' um invariante do produto: e' uma afirmacao
+    sobre a CARGA da maquina (medido 2026-11-27: 1,53 com 586 processos, contra
+    0,77 com 669 noutra corrida desta casa, sem regressao nenhuma). O que o
+    produto GARANTE e' mecanico: `_process_names` chama UM
+    `CreateToolhelp32Snapshot` e nao abre um handle por pid. E' isso que este
+    braco julga; o tempo continua a sair no detalhe dos outros bracos,
+    REPORTADO e nao julgado.
+    """
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as exc:
+        return False, "AST de gaming_mode.py: %s" % exc
+    fn = next((n for n in tree.body
+               if isinstance(n, ast.FunctionDef) and n.name == '_process_names'), None)
+    if fn is None:
+        return False, "def _process_names ausente de gaming_mode.py"
+    calls = []
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute):
+                calls.append(node.func.attr)
+            elif isinstance(node.func, ast.Name):
+                calls.append(node.func.id)
+    snapshots = [c for c in calls if c == 'CreateToolhelp32Snapshot']
+    per_pid = [c for c in calls
+               if c in ('OpenProcess', 'EnumProcesses',
+                        'QueryFullProcessImageNameW', 'OpenThread')]
+    ok = len(snapshots) == 1 and not per_pid
+    return ok, ("CreateToolhelp32Snapshot=%d APIs-por-pid=%s"
+                % (len(snapshots), ",".join(sorted(set(per_pid))) or "nenhuma"))
+
+
 def run(shell_path, gesture_path, overlay_path, gaming_path):
     for path in (shell_path, gesture_path, overlay_path, gaming_path):
         if not path.exists():
@@ -852,15 +887,14 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
     # `worst=56.72 ms`, e as mesmas corridas verdes minutos depois. Um portao
     # que fica vermelho por CARGA ensina a todos a repeti-lo.
     #
-    # A VERDADE DETERMINISTICA sao duas, e nenhuma delas depende de relogio:
-    #   (1) UMA enumeracao por tick (contada na propria costura);
-    #   (2) o custo INTRINSECO do tick (o MINIMO de 9 amostras -- a amostra em
-    #       que o processo teve CPU) nao passa do PISO medido na mesma corrida,
-    #       que e' UMA enumeracao crua: a carga pesa nos dois lados e cancela.
-    #       Uma regressao de verdade (o caminho por `OpenProcess`/pid que este
-    #       repo ja' pagou, 29,05 ms por processo) rompe o racio SEM carga
-    #       nenhuma. O valor absoluto continua a sair no detalhe, e o orcamento
-    #       declarado continua a ser julgado -- sobre o custo, nao sobre a espera.
+    # O RACIO tick/enumeracao NAO E' INVARIANTE (MEDIDO 2026-11-27, n_proc=586):
+    # tick_min=20,71 ms, enum_min=13,52 ms, racio=1,53 -- 0,03 acima do tecto
+    # 1,5 sem nenhuma regressao. A mesma casa mediu 0,77 com 669 processos
+    # (tick 91,14 / enum 119,13) e 0,86/1,03/1,04 em tres corridas ao lado:
+    # o minimo de 9 amostras apanha escalonamento, nao custo intrinseco.
+    # O que o produto GARANTE e' mecanico e nao depende da maquina: UM snapshot
+    # por enumeracao, nenhum handle por pid (`gaming_mode.py:52-56`). E' isso
+    # que a arm abaixo julga, pelo AST do ficheiro; o tempo e' REPORTADO.
     counts = {'n': 0}
     _real_names = gaming._process_names
 
@@ -904,10 +938,11 @@ def run(shell_path, gesture_path, overlay_path, gaming_path):
 
     add(counts['n'] == 9, "uma enumeracao por tick (contada na costura)",
         "read_names=%d para 9 ticks" % counts['n'])
-    add(tick_min <= enum_ms * 1.5,
-        "o custo do tick fica perto do de UMA enumeracao (o racio nao tem carga)",
-        "tick_min=%.2f ms enum_min=%.2f ms racio=%.2f (n_proc=%d)"
-        % (tick_min, enum_ms, tick_min / max(enum_ms, 0.001), len(det_b.last_names)))
+    ok_prim, prim_detail = process_names_primitive(gaming_src)
+    add(ok_prim, "UM snapshot por enumeracao, nenhum handle por pid", prim_detail)
+    print("  REPORTADO (nao julgado): tick_min=%.2f ms enum_min=%.2f ms racio=%.2f "
+          "n_proc=%d -- carga da maquina, nao regressao"
+          % (tick_min, enum_ms, tick_min / max(enum_ms, 0.001), len(det_b.last_names)))
     # O ORCAMENTO ABSOLUTO E' UMA AFIRMACAO SOBRE A MAQUINA, nao sobre o produto --
     # e nesta caixa ele foi medido do lado errado. MEDIDO 2026-11-08 na corrida
     # `steps=385`: `tick_min=91,14 ms` contra `budget=50,0 ms`, com
