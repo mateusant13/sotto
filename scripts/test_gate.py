@@ -65,6 +65,15 @@ class GateSummaryTest(unittest.TestCase):
         self.assertTrue(summary.startswith("gate CANNOT-MEASURE agc "), summary)
         self.assertNotIn("gate REFUSED", summary)
 
+    def test_skipped_stages_are_not_counted_as_passes(self):
+        with patch.dict(GATE.BUILDERS, _fast_builders()):
+            rc, out = _run(["--skip", "budgets", "--skip", "tests"])
+        self.assertEqual(rc, 0)
+        summary = out.strip().splitlines()[-1]
+        ran = len(GATE.STAGES) - 2
+        self.assertIn(f"gate PASS {ran}/{ran} stages (2 SKIPPED)", summary)
+        self.assertNotIn(f"{len(GATE.STAGES)}/{len(GATE.STAGES)}", summary)
+
 
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False, verbosity=2).result.wasSuccessful() else 1)

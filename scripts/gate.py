@@ -357,7 +357,10 @@ def main(argv: list[str] | None = None) -> int:
     rc = 2 if plain else 3 if cannot else 0
     verdict = {0: "PASS", 2: "REFUSED", 3: "CANNOT-MEASURE"}[rc]
     if rc == 0:
-        summary = f"gate PASS {len(results)}/{len(results)} stages in {wall_ms}ms rc=0"
+        ran = [r for r in results if r["verdict"] != "SKIPPED"]
+        skipped = len(results) - len(ran)
+        suffix = f" ({skipped} SKIPPED)" if skipped else ""
+        summary = f"gate PASS {len(ran)}/{len(ran)} stages{suffix} in {wall_ms}ms rc=0"
     else:
         bad = next(r["stage"] for r in results if r["verdict"] == "REFUSED")
         summary = f"gate {verdict} {bad} in {wall_ms}ms rc={rc}"
