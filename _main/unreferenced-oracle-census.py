@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: catches dead instruments mistaken for missing ones by classifying _main tools by real battery, code and documentation references
 """unreferenced-oracle-census -- classify every _main/*.py by REAL references.
 
 WHY THIS EXISTS. A dead instrument is indistinguishable from a missing one: both are

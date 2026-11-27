@@ -1,3 +1,4 @@
+# NO-BUG: catches an unbounded --log mirror queue that leaks resident memory when the writer stalls, and drops without a LOG_MIRROR_SUPPLIED count
 """The --log MIRROR is bounded and COUNTS what it drops (fixlist class f:2510).
 
 Before the fix `sotto_webview.py:2510` built `queue.SimpleQueue()`: a stalled

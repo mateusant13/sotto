@@ -1,3 +1,4 @@
+# NO-BUG: catches revive clearing in-memory latches but leaving panel-visibility.json park key published, so the new worker keeps shedding
 """Revive lifts the PUBLISHED park key, not only the in-memory latches (f:21367).
 
 `_do_revive` used to set `_paused/_external_parked/_vram_parked = False` and

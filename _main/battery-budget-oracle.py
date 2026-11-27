@@ -649,14 +649,23 @@ def judge_arms():
 
     arms = []
 
-    def arm(name, measured, want_ok, want_name=None, want_red_total=False):
+    def arm(name, measured, want_ok, want_name=None, want_red_total=False,
+            want_abs_red=False):
         ok, why, _gap = judge(measured, base)
         named = (any(want_name in w for w in why) if want_name else True)
-        total_red = any('acima do tecto' in w for w in why)
-        good = (ok == want_ok) and named and (total_red == want_red_total)
+        # O TECTO DO TOTAL comeca por `total ...`: o tecto ABSOLUTO de um passo
+        # NOVO tambem diz "acima do tecto" e era lido como total pelo braco A4
+        # (medido 2026-11-27: A4 RED com total-red=True, want False).
+        total_red = any(w.startswith('total') and 'acima do tecto' in w
+                        for w in why)
+        abs_red = any('acima do tecto absoluto' in w for w in why)
+        good = ((ok == want_ok) and named and
+                (total_red == want_red_total) and (abs_red == want_abs_red))
         arms.append({'arm': name, 'ok': good,
-                     'detail': 'ok=%s (want %s); named=%s; total-red=%s (want %s); %s'
+                     'detail': 'ok=%s (want %s); named=%s; total-red=%s (want %s); '
+                               'abs-red=%s (want %s); %s'
                                % (ok, want_ok, named, total_red, want_red_total,
+                                  abs_red, want_abs_red,
                                   ' | '.join(why) or '(sem razoes)')})
 
     arm('A1 um passo +10% passa (abaixo da regua de 20%)',
@@ -666,16 +675,22 @@ def judge_arms():
     arm('A3 total IGUAL e um passo 30->65 reprova (o caso que passava)',
         m({'a': 65.0, 'b': 20.0, 'c': 15.0, 'tiny': 0.3}, total=100.3), False,
         'a 30.0s -> 65.0s')
-    # A arm A4 tambem derruba o TECTO DO TOTAL (400 s contra 105 s), e isso e'
-    # esperado: o passo novo e' um passo que ninguem tinha medido, logo o total
-    # sobe por construcao. O que ela prova e' que o `new_over` o NOMEIA.
     # A4: um passo NOVO acima do prazo e' RED pelo prazo e o `new_over` NOMEIA-o.
     # O tecto do TOTAL nao dispara por ele: julgar o total inteiro contra um
     # baseline de outra populacao reprovava a bateria por crescer (medido
     # 2026-11-26: 452 passos comuns a 0,90x do baseline + 136 novos = o RED todo).
+    # O tecto ABSOLUTO de 60 s do passo novo e' outro braco: A4 exige que ele
+    # dispare (`abs-red=True`) SEM que o tecto do total dispare.
     arm('A4 passo novo acima do prazo, sem divida declarada',
         m({'a': 30, 'b': 40, 'c': 30, 'tiny': 0.3, 'd': 300}, over=['d']), False, 'd',
-        want_red_total=False)
+        want_red_total=False, want_abs_red=True)
+    # A20 E' O BRACO VERMELHO DO RULER ANTIGO: com `any('acima do tecto')` o
+    # motivo do passo novo era lido como tecto do total e este braco ficava RED
+    # (total-red=True contra want False). Se a distincao for desfeita, A20
+    # volta a vermelho na proxima corrida.
+    arm('A20 tecto ABSOLUTO de passo novo NAO e o tecto do total',
+        m({'a': 30, 'b': 40, 'c': 30, 'tiny': 0.3, 'd': 90}, over=['d']), False,
+        'd', want_red_total=False, want_abs_red=True)
     # A12 impede que a cura vire isencao: TODO passo comum +8% (abaixo da regua de
     # 20% por passo) soma 108 s contra o tecto de 105 s e o TECTO DO TOTAL tem de
     # disparar sozinho -- sem isto, apagar a comparacao do total ficaria verde.

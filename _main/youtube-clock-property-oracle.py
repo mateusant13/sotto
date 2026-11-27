@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# NO-BUG: catches YouTube clock state combinations no example covers, by asserting properties over all values of the three pure functions
 """CAMADA 3 -- PROPRIEDADES sobre as tres funcoes PURAS do relogio do YouTube.
 
 PORQUE ESTE FICHEIRO EXISTE (medido 2026-11-27, `test_quality_audit.py scan

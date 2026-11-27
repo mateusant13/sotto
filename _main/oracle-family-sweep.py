@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NO-BUG: catches uncapped oracle-family loops: 41 uncached Python starts reading the same 1.5 MB shell, full priority, disk saturation
 """UMA VARREDURA DE FAMILIA, COM TECTO E CACHE -- nao um laco de shell.
 
 O DEFEITO QUE ISTO FECHA (medido 2026-11-27, DM `dm-3e2757b5705d76bcf5db`): uma

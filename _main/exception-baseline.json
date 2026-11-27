@@ -4,7 +4,7 @@
   "app/webview/overlay_paint.py": 2,
   "app/webview/sotto_webview.py": 9,
   "app/webview/youtube_captions.py": 2,
-  "worker/inspect_model.py": 4,
+  "worker/inspect_model.py": 0,
   "worker/lang_prompt.py": 2,
   "worker/redux_live.py": 2,
   "worker/sotto_worker.py": 5,

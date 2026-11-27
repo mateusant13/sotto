@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# NO-BUG: catches a malformed caption JSON line escaping WorkerBridge._pump and killing the stdout channel (BRIDGE_PUMP_DIED), with a guard and a mutant arm
 """A MALFORMED LINE MUST NOT KILL THE CAPTION CHANNEL (medido 2026-11-27, audit #4).
 
 O DEFEITO QUE ESTE ORACULO GUARDA. Em `WorkerBridge._pump`, o ramo de `stderr`

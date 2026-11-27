@@ -1,3 +1,4 @@
+# NO-BUG: catches an unbounded QueryInterface log that grows on every COM poll of a long-lived worker and confuses cap drops with repeats
 """O registo do `QueryInterface` tem tecto, e o corte e' CONTADO.
 
 `worker/sotto_worker.py` responde `QueryInterface` ao COM do Windows no caminho

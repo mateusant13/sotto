@@ -221,7 +221,7 @@
       "max_func_name": "_meter_interface"
     },
     "app/webview/batch_queue.py": {
-      "bytes": 59116,
+      "bytes": 59105,
       "classes": 2,
       "defs": 16,
       "except_pass": 9,
@@ -231,12 +231,12 @@
       "max_func_name": "refresh"
     },
     "app/webview/bridge_census.py": {
-      "bytes": 3630,
+      "bytes": 3608,
       "classes": 0,
       "defs": 2,
       "except_pass": 0,
       "globals": 1,
-      "lines": 89,
+      "lines": 88,
       "max_func": 34,
       "max_func_name": "census"
     },
@@ -251,14 +251,14 @@
       "max_func_name": "drag_plan"
     },
     "app/webview/caption_overlay.py": {
-      "bytes": 110258,
+      "bytes": 110881,
       "classes": 8,
       "defs": 10,
       "except_pass": 8,
       "globals": 0,
-      "lines": 2180,
-      "max_func": 184,
-      "max_func_name": "__init__"
+      "lines": 2197,
+      "max_func": 175,
+      "max_func_name": "_init_state"
     },
     "app/webview/caption_settings.py": {
       "bytes": 7352,
@@ -310,13 +310,23 @@
       "max_func": 49,
       "max_func_name": "plan"
     },
+    "app/webview/display_geometry.py": {
+      "bytes": 15253,
+      "classes": 1,
+      "defs": 10,
+      "except_pass": 5,
+      "globals": 1,
+      "lines": 370,
+      "max_func": 118,
+      "max_func_name": "select_display_for_point"
+    },
     "app/webview/exit_killer.py": {
-      "bytes": 7275,
+      "bytes": 7265,
       "classes": 1,
       "defs": 8,
       "except_pass": 1,
       "globals": 0,
-      "lines": 185,
+      "lines": 184,
       "max_func": 42,
       "max_func_name": "run"
     },
@@ -339,6 +349,16 @@
       "lines": 632,
       "max_func": 53,
       "max_func_name": "tick"
+    },
+    "app/webview/headless_paint.py": {
+      "bytes": 9585,
+      "classes": 0,
+      "defs": 8,
+      "except_pass": 0,
+      "globals": 2,
+      "lines": 226,
+      "max_func": 46,
+      "max_func_name": "render_frame"
     },
     "app/webview/history_context.py": {
       "bytes": 11827,
@@ -381,12 +401,12 @@
       "max_func_name": "write"
     },
     "app/webview/load_shedding.py": {
-      "bytes": 58820,
+      "bytes": 58874,
       "classes": 8,
       "defs": 11,
       "except_pass": 2,
       "globals": 1,
-      "lines": 1265,
+      "lines": 1267,
       "max_func": 67,
       "max_func_name": "tick"
     },
@@ -401,13 +421,13 @@
       "max_func_name": "popen_kwargs"
     },
     "app/webview/overlay_paint.py": {
-      "bytes": 51414,
+      "bytes": 51332,
       "classes": 0,
       "defs": 28,
       "except_pass": 2,
       "globals": 1,
       "lines": 1126,
-      "max_func": 164,
+      "max_func": 163,
       "max_func_name": "_paint_bitmap"
     },
     "app/webview/panel_focus.py": {
@@ -471,22 +491,22 @@
       "max_func_name": "run_selftest"
     },
     "app/webview/shell_relaunch.py": {
-      "bytes": 22054,
+      "bytes": 22043,
       "classes": 1,
       "defs": 9,
       "except_pass": 3,
       "globals": 0,
-      "lines": 511,
+      "lines": 510,
       "max_func": 173,
       "max_func_name": "_selftest"
     },
     "app/webview/sotto_webview.py": {
-      "bytes": 1553574,
-      "classes": 29,
-      "defs": 184,
-      "except_pass": 75,
-      "globals": 10,
-      "lines": 28650,
+      "bytes": 1550000,
+      "classes": 28,
+      "defs": 175,
+      "except_pass": 69,
+      "globals": 11,
+      "lines": 28493,
       "max_func": 446,
       "max_func_name": "main"
     },
@@ -531,32 +551,32 @@
       "max_func_name": "install"
     },
     "app/webview/topmost_keepalive.py": {
-      "bytes": 5570,
+      "bytes": 5545,
       "classes": 1,
       "defs": 1,
       "except_pass": 0,
       "globals": 0,
-      "lines": 131,
+      "lines": 130,
       "max_func": 27,
       "max_func_name": "tick"
     },
     "app/webview/ui_watchdog_policy.py": {
-      "bytes": 9929,
+      "bytes": 9932,
       "classes": 1,
       "defs": 5,
       "except_pass": 0,
       "globals": 0,
-      "lines": 259,
-      "max_func": 90,
+      "lines": 260,
+      "max_func": 91,
       "max_func_name": "_selftest"
     },
     "app/webview/warm_engine.py": {
-      "bytes": 71668,
+      "bytes": 71642,
       "classes": 8,
       "defs": 17,
       "except_pass": 13,
       "globals": 0,
-      "lines": 1626,
+      "lines": 1625,
       "max_func": 65,
       "max_func_name": "__init__"
     },
@@ -611,13 +631,13 @@
       "max_func_name": "alpha_out"
     },
     "app/webview/youtube_captions.py": {
-      "bytes": 108198,
+      "bytes": 110308,
       "classes": 1,
       "defs": 69,
       "except_pass": 9,
       "globals": 2,
-      "lines": 2515,
-      "max_func": 281,
+      "lines": 2549,
+      "max_func": 293,
       "max_func_name": "fetch_track"
     },
     "app/webview/youtube_cdp_source.py": {
@@ -661,12 +681,12 @@
       "max_func_name": "window_by_paint"
     },
     "app/webview/youtube_window.py": {
-      "bytes": 23577,
+      "bytes": 23566,
       "classes": 0,
       "defs": 17,
       "except_pass": 0,
       "globals": 0,
-      "lines": 551,
+      "lines": 549,
       "max_func": 66,
       "max_func_name": "painted_rows"
     },
@@ -731,12 +751,12 @@
       "max_func_name": "_flush"
     },
     "worker/audio_ring.py": {
-      "bytes": 40798,
+      "bytes": 40779,
       "classes": 1,
       "defs": 8,
       "except_pass": 6,
       "globals": 0,
-      "lines": 846,
+      "lines": 845,
       "max_func": 83,
       "max_func_name": "__init__"
     },
@@ -761,12 +781,12 @@
       "max_func_name": "_selftest"
     },
     "worker/capture_share.py": {
-      "bytes": 16179,
+      "bytes": 16191,
       "classes": 3,
       "defs": 6,
       "except_pass": 9,
       "globals": 0,
-      "lines": 443,
+      "lines": 444,
       "max_func": 55,
       "max_func_name": "_accept_loop"
     },
@@ -801,13 +821,13 @@
       "max_func_name": "run_engine_pass"
     },
     "worker/engine_switch.py": {
-      "bytes": 96877,
+      "bytes": 97856,
       "classes": 3,
       "defs": 14,
       "except_pass": 2,
       "globals": 0,
-      "lines": 1792,
-      "max_func": 174,
+      "lines": 1812,
+      "max_func": 176,
       "max_func_name": "__init__"
     },
     "worker/fusion.py": {
@@ -821,12 +841,12 @@
       "max_func_name": "feed"
     },
     "worker/inspect_model.py": {
-      "bytes": 4202,
+      "bytes": 5091,
       "classes": 0,
       "defs": 1,
       "except_pass": 4,
       "globals": 0,
-      "lines": 118,
+      "lines": 128,
       "max_func": 24,
       "max_func_name": "check_for_sessions"
     },
@@ -861,12 +881,12 @@
       "max_func_name": "admit"
     },
     "worker/mic_tap.py": {
-      "bytes": 18303,
+      "bytes": 18284,
       "classes": 2,
       "defs": 5,
       "except_pass": 5,
       "globals": 0,
-      "lines": 429,
+      "lines": 428,
       "max_func": 60,
       "max_func_name": "pick_microphone"
     },
@@ -931,7 +951,7 @@
       "max_func_name": "main"
     },
     "worker/redux_live.py": {
-      "bytes": 210465,
+      "bytes": 210508,
       "classes": 7,
       "defs": 38,
       "except_pass": 11,
@@ -961,13 +981,13 @@
       "max_func_name": "decide"
     },
     "worker/sotto_worker.py": {
-      "bytes": 540428,
+      "bytes": 541725,
       "classes": 17,
-      "defs": 117,
+      "defs": 118,
       "except_pass": 23,
       "globals": 7,
-      "lines": 10239,
-      "max_func": 2977,
+      "lines": 10260,
+      "max_func": 2969,
       "max_func_name": "main"
     },
     "worker/speaker_bridge.py": {
@@ -1021,22 +1041,22 @@
       "max_func_name": "tap_census_verdict"
     },
     "worker/ultra_export.py": {
-      "bytes": 19994,
+      "bytes": 20304,
       "classes": 3,
       "defs": 9,
       "except_pass": 0,
       "globals": 0,
-      "lines": 429,
-      "max_func": 102,
+      "lines": 435,
+      "max_func": 108,
       "max_func_name": "export"
     },
     "worker/unified_asr.py": {
-      "bytes": 20891,
+      "bytes": 21298,
       "classes": 1,
       "defs": 14,
       "except_pass": 1,
       "globals": 0,
-      "lines": 493,
+      "lines": 497,
       "max_func": 70,
       "max_func_name": "_ladder"
     },
@@ -1051,12 +1071,12 @@
       "max_func_name": "build"
     },
     "worker/wasapi_loopback.py": {
-      "bytes": 76202,
+      "bytes": 76947,
       "classes": 6,
       "defs": 31,
       "except_pass": 4,
       "globals": 0,
-      "lines": 1624,
+      "lines": 1642,
       "max_func": 174,
       "max_func_name": "_pump"
     }

@@ -1,3 +1,4 @@
+# NO-BUG: catches an unbounded REDUX caption queue when the consumer stalls, plus silent caption losses and missing drop counts
 """The REDUX caption queue is bounded and COUNTS what it drops (fixlist f:851).
 
 `ReduxHiddenSwitch.__init__` used `queue.Queue()`: a consumer that stops
