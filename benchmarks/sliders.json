@@ -1,16 +1,16 @@
 {
   "schema": "revival.sliders/v1",
-  "updated_at": "2026-11-27T07:51:13Z",
+  "updated_at": "2026-11-27T07:56:08Z",
   "scale_0_100": [
     {
       "id": "delivery_balance",
       "label": "Delivery Balance (Product vs Meta)",
       "baseline": 62,
-      "current": 72.0,
+      "current": 88.0,
       "target": 85,
       "counterpart": "Gate rigor & hygiene",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/landing_ratio_check.py --repo . --balance-score",
-      "evidence": "measured 2026-11-27: landing_ratio_check --balance-score -> product_ratio_pct 72.5 over 40 commits (29 product), small_slices_pct 90.0. Target 90 needs 36/40 product; today's landed work was gates/metering."
+      "evidence": "measured 2026-11-27: landing_ratio_check --balance-score -> 88, band Product-Led, verdict HEALTHY; sub-scores ratio 28 (29/40 product commits, audited by hand: the 11 meta ones are docs/receipts/revival ledgers), telemetry 25, hygiene 20 (rulebook_lean now measures whether the history lives elsewhere: docs/AGENTS-archive-* has 3000+ lines vs 1299 in AGENTS.md), cadence 15; the repaired rule proved in three directions -- lean 200 -> 20, router+archive -> 20, fat 1299 without archive -> 10"
     },
     {
       "id": "observability",
