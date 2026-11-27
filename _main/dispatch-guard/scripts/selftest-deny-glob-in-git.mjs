@@ -7,7 +7,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const TARGET = join(here, 'deny-glob-in-git.mjs');
 
 function fire(command) {
-  const r = spawnSync(process.execPath, [TARGET], {
+  const r = spawnSync(process.execPath, [TARGET], { timeout: 30000,
     input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_input: { windowsHide: true, command } }),
     encoding: 'utf8',
   });

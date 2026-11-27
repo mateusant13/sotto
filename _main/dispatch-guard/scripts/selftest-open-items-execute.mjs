@@ -87,7 +87,7 @@ const ARMS = [
 ];
 
 function mk(payload) {
-  return spawnSync(process.execPath, [HOOK], {
+  return spawnSync(process.execPath, [HOOK], { timeout: 30000,
     input: JSON.stringify(payload),
     encoding: "utf8",
     env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },

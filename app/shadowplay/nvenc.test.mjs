@@ -14,7 +14,7 @@ function t(name, fn) {
 }
 
 const hasFfmpeg = (() => {
-  try { execFileSync("ffmpeg", ["-version"], { windowsHide: true, stdio: "ignore" }); return true; }
+  try { execFileSync("ffmpeg", ["-version"], { timeout: 30000, windowsHide: true, stdio: "ignore" }); return true; }
   catch { return false; }
 })();
 
@@ -63,7 +63,7 @@ try {
       const keyTimes = (file) => execFileSync("ffprobe", ["-v", "error",
         "-select_streams", "v:0", "-skip_frame", "nokey",
         "-show_entries", "frame=pts_time", "-of", "csv=p=0", file],
-        { windowsHide: true, encoding: "utf8" })
+        { timeout: 30000, windowsHide: true, encoding: "utf8" })
         .split("\n").map((x) => parseFloat(x)).filter((x) => Number.isFinite(x));
       // A ESCASSEZ PEDE MAIS TEMPO, NAO A MESMA TENTATIVA (medido 2026-11-05):
       // com tres capturas de 12 s a competir pelo mesmo desktop, as tres sairam
@@ -112,11 +112,11 @@ try {
       const encodesBeforeRemux = enc.encodeCount();
       const before = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=codec_name,nb_frames", "-of", "csv=p=0", src],
-        { windowsHide: true, encoding: "utf8" }).trim();
+        { timeout: 30000, windowsHide: true, encoding: "utf8" }).trim();
       const r = enc.remux(src, dst);
       const after = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0",
         "-show_entries", "stream=codec_name,nb_frames", "-of", "csv=p=0", dst],
-        { windowsHide: true, encoding: "utf8" }).trim();
+        { timeout: 30000, windowsHide: true, encoding: "utf8" }).trim();
       assert.equal(after, before, "the stream changed across a remux");
       // O CONTADOR E' RELATIVO (2026-11-05): a captura acima pode ter precisado
       // de mais de uma janela, e um numero absoluto de encodes passaria a

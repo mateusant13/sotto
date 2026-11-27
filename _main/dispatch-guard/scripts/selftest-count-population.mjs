@@ -135,7 +135,7 @@ const ARMS = [
 ];
 
 function fire(payload) {
-  return spawnSync(process.execPath, [HOOK], {
+  return spawnSync(process.execPath, [HOOK], { timeout: 30000,
     input: JSON.stringify(payload),
     encoding: "utf8",
     env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },
@@ -232,7 +232,7 @@ for (const [label, raw] of [
   ["numeric message", '{"hook_event_name":"Stop","last_assistant_message":12345}'],
   ["truncated JSON", '{"last_assistant_message":"5 tarballs (not 4'],
 ]) {
-  const r = spawnSync(process.execPath, [HOOK], {
+  const r = spawnSync(process.execPath, [HOOK], { timeout: 30000,
     input: raw,
     encoding: "utf8",
     env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },

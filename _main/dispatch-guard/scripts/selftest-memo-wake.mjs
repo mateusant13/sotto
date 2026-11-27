@@ -58,7 +58,7 @@ function buildStore(dir, { memories, bigText = null, summarizeTo = 2 }) {
 }
 
 function fire(payload, storeDir) {
-  const r = spawnSync(process.execPath, [TARGET], {
+  const r = spawnSync(process.execPath, [TARGET], { timeout: 30000,
     input: JSON.stringify(payload),
     encoding: 'utf8',
     env: { windowsHide: true, ...process.env, MEMORY_DIR: storeDir, PLUGIN_DATA_OVERRIDE: join(storeDir, '_data') },
@@ -145,7 +145,7 @@ try {
       // it. Without this the mutant dies on a missing import and A3c goes red for the wrong reason -
       // which is exactly the failure this arm exists to avoid.
       writeFileSync(join(scratch, 'ledger.mjs'), readFileSync(join(here, 'ledger.mjs'), 'utf8'), 'utf8');
-      const r2 = spawnSync(process.execPath, [mPath], {
+      const r2 = spawnSync(process.execPath, [mPath], { timeout: 30000,
         input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'mvs_owner', source: 'startup' }),
         encoding: 'utf8',
         env: { windowsHide: true, ...process.env, MEMORY_DIR: d, PLUGIN_DATA_OVERRIDE: join(d, '_data') },
@@ -181,7 +181,7 @@ try {
   // why the fixture is deliberately over WAKE_LINES.
   {
     const MEMO = join(homedir(), '.optmem', 'memo');
-    const havePython = spawnSync('python', ['--version'], { windowsHide: true, encoding: 'utf8' }).error === undefined;
+    const havePython = spawnSync('python', ['--version'], { timeout: 30000, windowsHide: true, encoding: 'utf8' }).error === undefined;
     if (!existsSync(MEMO) || !havePython) {
       process.stdout.write(
         `SKIP A5-differential-vs-memo :: python=${havePython} memo_present=${existsSync(MEMO)} (SKIPPED, not passed)\n`,
@@ -193,7 +193,7 @@ try {
         let truth = '';
         let truthErr = null;
         try {
-          truth = spawnSync('python', [MEMO, 'wake'], { encoding: 'utf8', env: { windowsHide: true, ...process.env, MEMORY_DIR: d } }).stdout || '';
+          truth = spawnSync('python', [MEMO, 'wake'], { timeout: 30000, encoding: 'utf8', env: { windowsHide: true, ...process.env, MEMORY_DIR: d } }).stdout || '';
         } catch (e) {
           truthErr = String(e);
         }

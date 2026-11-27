@@ -7,7 +7,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const TARGET = join(here, 'deny-fail-silent.mjs');
 
 function fire(tool, content, path = 'x.py') {
-  const r = spawnSync(process.execPath, [TARGET], {
+  const r = spawnSync(process.execPath, [TARGET], { timeout: 30000,
     input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: { windowsHide: true, path, content } }),
     encoding: 'utf8',
   });

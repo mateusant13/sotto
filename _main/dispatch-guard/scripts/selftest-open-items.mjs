@@ -68,7 +68,7 @@ function runArm(arm, i) {
     session_id: `selftest-arm-${i}`,
     last_assistant_message: arm.message,
   };
-  const r = spawnSync(process.execPath, [HOOK], {
+  const r = spawnSync(process.execPath, [HOOK], { timeout: 30000,
     input: JSON.stringify(payload),
     encoding: "utf8",
     env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },
@@ -109,7 +109,7 @@ console.log("\n  one-shot guard (second Stop for the same session must NOT re-bl
 const bad = ARMS[1].message;
 const p1 = { hook_event_name: "Stop", session_id: "selftest-oneshot", last_assistant_message: bad };
 const mk = (payload) =>
-  spawnSync(process.execPath, [HOOK], {
+  spawnSync(process.execPath, [HOOK], { timeout: 30000,
     input: JSON.stringify(payload),
     encoding: "utf8",
     env: { windowsHide: true, ...process.env, PLUGIN_DATA: data },

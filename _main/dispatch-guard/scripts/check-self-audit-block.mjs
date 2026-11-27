@@ -644,7 +644,7 @@ const ARMS = [
 function runArm(arm) {
   const { spawnSync } = require_spawn();
   const args = [process.argv[1]];
-  const res = spawnSync(process.execPath, args, {
+  const res = spawnSync(process.execPath, args, { timeout: 30000,
     input: arm.raw !== undefined ? arm.raw : JSON.stringify(arm.payload),
     encoding: "utf8",
     env: Object.assign({}, process.env, arm.env || {}),

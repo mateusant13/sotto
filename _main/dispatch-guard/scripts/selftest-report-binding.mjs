@@ -9,7 +9,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const TARGET = join(here, 'check-report-binding.mjs');
 
 function fire(message) {
-  const r = spawnSync(process.execPath, [TARGET], {
+  const r = spawnSync(process.execPath, [TARGET], { timeout: 30000,
     input: JSON.stringify({ windowsHide: true, hook_event_name: 'Stop', last_assistant_message: message }),
     encoding: 'utf8',
   });

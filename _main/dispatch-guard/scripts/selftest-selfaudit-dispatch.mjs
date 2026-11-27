@@ -28,7 +28,7 @@ function arm(name, ok, detail) {
 
 function run(payload, dataDir) {
   const dd = dataDir || mkdtempSync(join(tmpdir(), 'sa-'));
-  const res = execFileSync(process.execPath, [SCRIPT], {
+  const res = execFileSync(process.execPath, [SCRIPT], { timeout: 30000,
     input: JSON.stringify(payload), encoding: 'utf8', env: { windowsHide: true, ...process.env, PLUGIN_DATA: dd },
   });
   return { out: res, dataDir: dd };
@@ -43,10 +43,7 @@ console.log('selftest: selfaudit-dispatch-inject.mjs');
 // code change, because it was asserting against whatever had been said in the last
 // 40 turns. That is a time-dependent assertion, not an assertion. The fixture below
 // makes the arm deterministic: the same input yields the same verdict forever.
-{
-  const tmp = mkdtempSync(join(tmpdir(), 'sa-db-'));
-  const dbPath = join(tmp, 'fixture.sqlite');
-  execFileSync(process.execPath, ['-e', `
+const AUDIT_DB_SRC = `
     const { DatabaseSync } = require('node:sqlite');
     const db = new DatabaseSync(process.argv[1]);
     db.exec('CREATE TABLE local_runtime_message_rows (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT, created_at_ms INTEGER, data_json TEXT)');
@@ -60,10 +57,18 @@ console.log('selftest: selfaudit-dispatch-inject.mjs');
     const stmt = db.prepare('INSERT INTO local_runtime_message_rows (session_id, role, created_at_ms, data_json) VALUES (?,?,?,?)');
     stmt.run('mvs_fixturesession0000000000000000', 'assistant', 1, JSON.stringify({ msg_content: audit }));
     db.close();
-  `, dbPath], { windowsHide: true, encoding: 'utf8' });
+`;
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'sa-db-'));
+  const dbPath = join(tmp, 'fixture.sqlite');
+  // Idem: a constante fica acima, a chamada cabe em duas linhas e o `timeout`
+  // vive na mesma instrucao que o detector le.
+  execFileSync(process.execPath, ['-e', AUDIT_DB_SRC, dbPath],
+    { timeout: 30000, windowsHide: true, encoding: 'utf8' });
 
   const dd = mkdtempSync(join(tmpdir(), 'sa-'));
-  const res = execFileSync(process.execPath, [SCRIPT], {
+  const res = execFileSync(process.execPath, [SCRIPT], { timeout: 30000,
     input: JSON.stringify({ session_id: 'mvs_fixturesession0000000000000000' }),
     encoding: 'utf8',
     env: { windowsHide: true, ...process.env, PLUGIN_DATA: dd, SELFAUDIT_DB: dbPath },
@@ -98,7 +103,7 @@ console.log('selftest: selfaudit-dispatch-inject.mjs');
 {
   let crashed = false, out = '';
   try {
-    const r = execFileSync(process.execPath, [SCRIPT], { input: '{not json', encoding: 'utf8',
+    const r = execFileSync(process.execPath, [SCRIPT], { timeout: 30000, input: '{not json', encoding: 'utf8',
       env: { windowsHide: true, ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'sa-')) } });
     out = r;
   } catch (e) { crashed = true; out = String(e.stderr || e.message); }

@@ -374,7 +374,7 @@ function selftest() {
   const cfgBad = dir + "/bad.yaml"; writeFileSync(cfgBad, CFG_INVALID, "utf8");
 
   function e2e(label, cfgPath, asarPath, wantRc, wantText) {
-    const r = spawnSync(process.execPath, [SELF], {
+    const r = spawnSync(process.execPath, [SELF], { timeout: 30000,
       encoding: "utf8",
       env: { windowsHide: true, ...process.env, MCO_GUARD_CONFIG: cfgPath, MCO_GUARD_ASAR: asarPath },
     });

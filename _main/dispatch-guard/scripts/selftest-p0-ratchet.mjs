@@ -51,10 +51,7 @@ const DONE = [
   'Does your implementation meet the spec? YES - everything landed',
 ].join('\n');
 
-function fixtureDb(name, body) {
-  const tmp = mkdtempSync(join(tmpdir(), 'ratchet-'));
-  const dbPath = join(tmp, 'fixture.sqlite');
-  execFileSync(process.execPath, ['-e', `
+const FIXTURE_DB_SRC = `
     const { DatabaseSync } = require('node:sqlite');
     const db = new DatabaseSync(process.argv[1]);
     // turn_id IS PART OF THE SCHEMA. The fixture originally omitted it, so the hook's
@@ -65,13 +62,21 @@ function fixtureDb(name, body) {
     db.prepare('INSERT INTO local_runtime_message_rows (session_id, role, turn_id, created_at_ms, data_json) VALUES (?,?,?,?,?)')
       .run(process.argv[2], 'assistant', 'turn_fixture01', 1, JSON.stringify({ msg_content: process.argv[3] }));
     db.close();
-  `, dbPath, SID, body], { windowsHide: true, encoding: 'utf8' });
+`;
+
+function fixtureDb(name, body) {
+  const tmp = mkdtempSync(join(tmpdir(), 'ratchet-'));
+  const dbPath = join(tmp, 'fixture.sqlite');
+  // O script e' uma constante: a chamada cabe em duas linhas, logo o `timeout` do
+  // spawn fica na MESMA instrucao que o detector do fail-fast le (janela de 7 linhas).
+  execFileSync(process.execPath, ['-e', FIXTURE_DB_SRC, dbPath, SID, body],
+    { timeout: 30000, windowsHide: true, encoding: 'utf8' });
   return { tmp, dbPath };
 }
 
 function run(dbPath, tag) {
   const dd = mkdtempSync(join(tmpdir(), 'ratchet-data-'));
-  const out = execFileSync(process.execPath, [SCRIPT], {
+  const out = execFileSync(process.execPath, [SCRIPT], { timeout: 30000,
     input: JSON.stringify({ session_id: SID }),
     encoding: 'utf8',
     env: { windowsHide: true, ...process.env, PLUGIN_DATA: dd, RATCHET_DB: dbPath },
@@ -107,7 +112,7 @@ console.log('selftest: p0-ratchet-inject.mjs');
 
 // 3 - no session id: silent pass, never a guess at which session this is.
 {
-  const out = execFileSync(process.execPath, [SCRIPT], {
+  const out = execFileSync(process.execPath, [SCRIPT], { timeout: 30000,
     input: JSON.stringify({ cwd: 'I:\\!manager' }), encoding: 'utf8',
     env: { windowsHide: true, ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'ratchet-data-')) },
   });
@@ -118,7 +123,7 @@ console.log('selftest: p0-ratchet-inject.mjs');
 {
   let crashed = false, out = '';
   try {
-    out = execFileSync(process.execPath, [SCRIPT], {
+    out = execFileSync(process.execPath, [SCRIPT], { timeout: 30000,
       input: '{not json', encoding: 'utf8',
       env: { windowsHide: true, ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'ratchet-data-')) },
     });
@@ -130,7 +135,7 @@ console.log('selftest: p0-ratchet-inject.mjs');
 //     to be removed; the reminder must not become the thing it replaced.
 {
   const f = fixtureDb('deferring2', DEFERRING);
-  const res = execFileSync(process.execPath, [SCRIPT], {
+  const res = execFileSync(process.execPath, [SCRIPT], { timeout: 30000,
     input: JSON.stringify({ session_id: SID }), encoding: 'utf8',
     env: { windowsHide: true, ...process.env, PLUGIN_DATA: mkdtempSync(join(tmpdir(), 'ratchet-data-')), RATCHET_DB: f.dbPath },
   });
