@@ -4892,16 +4892,19 @@ if exist "%REVIVAL_SKILLS%\feature_map_sync.py" (
   call :step feature-map-selftest 0 "%REVIVAL_SKILLS%\feature_map_sync.py" "%OUT%\feature-map-selftest.log" python "%REVIVAL_SKILLS%\feature_map_sync.py" --selftest
   call :record feature-map-selftest !STEP_RC!
 ) else ( call :record feature-map-gate MISSING & call :record feature-map-selftest MISSING )
-REM O `!` DE `I:\!watcher` E ESCAPADO COMO `^!` DE PROPOSITO (medido 2026-11-27): este ficheiro
-REM corre com EnableDelayedExpansion ON, e nesse modo um `!` literal e consumido pelo parser --
-REM `I:\!watcher\scripts\...` e lido como `I:\watcher\scripts\...`, o `if exist` falha e os DOIS
-REM passos eram registados MISSING enquanto o ficheiro existia em disco. Reproduzido num .cmd de
-REM 6 linhas: literal -> MISSING/fail, `^!` -> EXISTS/rc 0. O mesmo `^!` vai no argumento de largada,
-REM nao so no guarda.
-if exist "I:\^!watcher\scripts\benchmark_history.py" (
-  call :step benchmark-gate 0 "benchmarks\budgets.json;benchmarks\history.jsonl;I:\^!watcher\scripts\benchmark_history.py" "%OUT%\benchmark-gate.log" python "I:\^!watcher\scripts\benchmark_history.py" run --repo . --label battery --gate
+REM O INSTRUMENTO DESTE PASSO MUDOU DE DONO, E O MOTIVO E UMA MEDICAO (2026-11-27).
+REM Os dois passos `benchmark-*` apontavam para `%REVIVAL%\benchmark_history.py`, ou seja
+REM `I:\!watcher\scripts\...`. Esse ficheiro e um FORK parado (38 473 B, 6 arms) e o `!` do
+REM caminho e consumido pelo EnableDelayedExpansion deste ficheiro -- `I:\watcher\scripts` --,
+REM logo o guarda `if exist` dava falso e a corrida inteira registava os dois como MISSING com
+REM os logs de ontem ao lado. O instrumento mantido e a copia da skill (46 371 B, 13 arms),
+REM `%REVIVAL_SKILLS%\benchmark_history.py`, que nao tem `!` nenhum no caminho: o defeito morre
+REM por construcao, nao por escape. Medido: `--selftest` rc 0 (13 arms), `run --repo . --label
+REM battery --gate` agrega os outros gates do repo (por isso um gate vermelho alheio aparece aqui).
+if exist "%REVIVAL_SKILLS%\benchmark_history.py" (
+  call :step benchmark-gate 0 "benchmarks\budgets.json;benchmarks\history.jsonl;%REVIVAL_SKILLS%\benchmark_history.py" "%OUT%\benchmark-gate.log" python "%REVIVAL_SKILLS%\benchmark_history.py" run --repo . --label battery --gate
   call :record benchmark-gate !STEP_RC!
-  call :step benchmark-selftest 0 "I:\^!watcher\scripts\benchmark_history.py" "%OUT%\benchmark-selftest.log" python "I:\^!watcher\scripts\benchmark_history.py" --selftest
+  call :step benchmark-selftest 0 "%REVIVAL_SKILLS%\benchmark_history.py" "%OUT%\benchmark-selftest.log" python "%REVIVAL_SKILLS%\benchmark_history.py" --selftest
   call :record benchmark-selftest !STEP_RC!
 ) else ( call :record benchmark-gate MISSING & call :record benchmark-selftest MISSING )
 REM FAIL-FAST v4.1 (2026-11-27): o passo POSITIVO e o proprio auditor a julgar a

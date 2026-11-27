@@ -1,8 +1,8 @@
 {
   "schema": "revival.features/v1",
   "repo": "sotto",
-  "git_head": "4f44588",
-  "generated_at": "2026-11-27T23:00:51Z",
+  "git_head": "a1aa26f",
+  "generated_at": "2026-11-27T23:50:20Z",
   "total_tracked_files": 3451,
   "feature_count": 15,
   "features": [
@@ -894,7 +894,6 @@
         "_main/fleurs-nemotron-stream-runner.py",
         "_main/fleurs-ultra-gpu-runner.py",
         "_main/flicker-dom-oracle.js",
-        "_main/focus-and-flash-gate.py",
         "_main/focus-timeline-oracle.py",
         "_main/focus-timeline-probe.py",
         "_main/fonts-fidelity-oracle.mjs",
@@ -1255,7 +1254,6 @@
         "_main/verdict-gate.py",
         "_main/verdict-order-oracle.py",
         "_main/verify-all-launch-audit.py",
-        "_main/wake-tick-gate.py",
         "_main/warm-engine-oracle.py",
         "_main/warm-engine-task-oracle.py",
         "_main/warm-evidence-oracle.py",
@@ -1352,8 +1350,8 @@
         "_main/zip-mockups/zip-E-panels.html",
         "_main/zipc-designs-oracle.py"
       ],
-      "file_count": 1340,
-      "recent_commit_touches": 385,
+      "file_count": 1338,
+      "recent_commit_touches": 372,
       "recent_commit_subjects": [
         "perf(nemotron-oracle): split a 1.5 MB source once, not 12x (46.2s -> 3.0s CPU)",
         "fix(gates): two false greens closed, ambient arm declared, dm-triage wired",
@@ -1613,7 +1611,7 @@
         "app/panel/zip-overlay.css"
       ],
       "file_count": 119,
-      "recent_commit_touches": 25,
+      "recent_commit_touches": 21,
       "recent_commit_subjects": [
         "ops: battery GREEN -- cheaper oracles, chrome and token removals",
         "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery",
@@ -1805,7 +1803,7 @@
         "app/webview/z_order.py"
       ],
       "file_count": 52,
-      "recent_commit_touches": 68,
+      "recent_commit_touches": 61,
       "recent_commit_subjects": [
         "fix(worker): bound the QueryInterface log and wire both new gates",
         "fix(log): a rotation that cannot happen is now counted and named",
@@ -1977,10 +1975,12 @@
         "scripts/test_task_resolver_gate.py"
       ],
       "file_count": 7,
-      "recent_commit_touches": 4,
+      "recent_commit_touches": 10,
       "recent_commit_subjects": [
         "feat(revival): the gate is a file, and the two vocabularies are declared",
-        "test(gate): one unified driver for sotto's real rails",
+        "fix(gate): a neg arm with no verdict is not a red",
+        "fix(gate): a skipped stage is not reported as a passed stage",
+        "fix(gate): a CANNOT-MEASURE gate is not printed as REFUSED",
         "fix(battery): repair twelve rotted instruments and close the Codex handover"
       ],
       "how_it_works": "`scripts/task-resolver-gate.py` enforces the task-resolver mandate with checks for the AGENTS.md route, skill version and digest, gate-bootstrap law, evidence vocabulary and battery wiring; its mutation arms require the named check to go red. `scripts/check-bug-hunt-wiring.py` does the equivalent for bug-hunt, `scripts/test_task_resolver_gate.py` unit-tests the gate, and `scripts/agc-gate.sh` reads WORKER_STATS to prove the live AGC acts when allowed and needed.",
@@ -2081,7 +2081,7 @@
         "worker/wasapi_loopback.py"
       ],
       "file_count": 44,
-      "recent_commit_touches": 56,
+      "recent_commit_touches": 55,
       "recent_commit_subjects": [
         "fix(worker): bound the QueryInterface log and wire both new gates",
         "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth",

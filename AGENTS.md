@@ -907,8 +907,8 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
 - **PIN do ficheiro (re-medido 2026-11-27, depois do par `revival-gate`):**
-  `_main\_audit-verify-all.cmd` = **476217 B**, **5412 CRLF** / 0 bare LF,
-  sha256 `581E468A7701FF9D07648FEA4A48D379ACBB6718E95244ACB4BDFF7D520AF47B`.
+  `_main\_audit-verify-all.cmd` = **476529 B**, **5415 CRLF** / 0 bare LF,
+  sha256 `05E2402958A06863A169A45F27DDDB25364E8E5D3BB3D4338A1C1BA0E82D8A7A`.
   (Pares ligados ate' hoje: `youtube-sync` -- unico oraculo da familia sem
   chamador --, `stepcache-skip-record` -- um passo SKIP-SLOW era adiado sem
   escrever custo nem razao, logo o ratchet lia um `elapsed_s` velho e um passo
