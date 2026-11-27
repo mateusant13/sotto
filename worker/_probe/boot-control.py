@@ -33,11 +33,26 @@ REPO = os.path.dirname(WORKER)
 CTL = os.path.join(WORKER, "_head-control-sotto_worker.py")
 PROBE = os.path.join(HERE, "boot-io.py")
 
+# Ceiling for both child processes. `boot-io.py` spawns the worker and waits up
+# to 600 s itself; the owner's log shows 65-206 s to `model-loaded` on a
+# contended disk (6 s idle). 300 s clears that documented worst case with
+# margin, yet caps a hung child at 5 min -- caught well before boot-io's own
+# 600 s inner ceiling would let it linger. Used at both subprocess.run sites.
+CHILD_TIMEOUT_S = 300
 
-def run(label, script):
+
+def run(label, script, argv=None):
+    """Return the probe's rc; argv overrides the probe command (selftest only)."""
     print("== %s (%s)" % (label, os.path.basename(script)), flush=True)
-    out = subprocess.run([sys.executable, PROBE, "--script", script],
-                         cwd=REPO, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=_SI)
+    if argv is None:
+        argv = [sys.executable, PROBE, "--script", script]
+    try:
+        out = subprocess.run(argv, cwd=REPO, capture_output=True, text=True,
+                             creationflags=subprocess.CREATE_NO_WINDOW,
+                             startupinfo=_SI, timeout=CHILD_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write("%s: child timed out after %ss\n" % (label, CHILD_TIMEOUT_S))
+        return 1
     for line in out.stdout.splitlines():
         if line.startswith("RESULT"):
             print(line, flush=True)
@@ -47,8 +62,14 @@ def run(label, script):
 
 
 def main():
-    src = subprocess.run(["git", "show", "HEAD:worker/sotto_worker.py"],
-                         cwd=REPO, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW, startupinfo=_SI)
+    try:
+        src = subprocess.run(["git", "show", "HEAD:worker/sotto_worker.py"],
+                             cwd=REPO, capture_output=True, text=True,
+                             creationflags=subprocess.CREATE_NO_WINDOW,
+                             startupinfo=_SI, timeout=CHILD_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        sys.stderr.write("git show timed out after %ss\n" % CHILD_TIMEOUT_S)
+        return 2
     if src.returncode != 0:
         print("cannot read HEAD worker:", src.stderr[-400:])
         return 2
@@ -66,5 +87,36 @@ def main():
     return 0 if a == 0 and b == 0 and a2 == 0 else 1
 
 
+def _selftest():
+    """Prove the TimeoutExpired arm fires with CHILD_TIMEOUT_S shrunk.
+
+    The child sleeps via `py -c`; a tiny timeout must make run() name the
+    ceiling on stderr and return its failure rc, with no traceback.
+    """
+    import io
+
+    global CHILD_TIMEOUT_S
+    real_timeout = CHILD_TIMEOUT_S
+    stderr = sys.stderr
+    captured = io.StringIO()
+    try:
+        CHILD_TIMEOUT_S = 0.05
+        sys.stderr = captured
+        rc = run("slow child", "-c",
+                 argv=[sys.executable, "-c", "import time; time.sleep(2)"])
+    finally:
+        sys.stderr = stderr
+        CHILD_TIMEOUT_S = real_timeout
+    msg = captured.getvalue()
+    print("selftest: timeout arm rc=%d stderr=%r" % (rc, msg), flush=True)
+    if rc != 1 or "timed out after 0.05s" not in msg:
+        sys.stderr.write("selftest FAIL: timeout arm did not fire\n")
+        return 1
+    print("selftest OK: timeout arm caught the slow child", flush=True)
+    return 0
+
+
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        sys.exit(_selftest())
     sys.exit(main())
