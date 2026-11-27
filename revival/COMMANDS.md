@@ -21,3 +21,4 @@
 - `smoke_e2e_live_yt`: `python _main/yt-lane-session.py` (Chrome proprio, porta 9341; a 9222 do dono e' recusada pelo nome)
 - `hole_bend`: `python _main/bend-laws-gate.py` -> `BEND-GATE SKIPPED: NOT INSTALLED` enquanto `ubuntu-bend` nao existir
 - `dm_triage`: `python _main/dm-triage.py <dm.md>` — identidade primeiro, taxa recusada por nome quando o DM a nao da
+- `gate`: `python scripts/gate.py [--json] [--skip NAME]` — driver only; calls the rails above with named timeouts; refusal rc=2, CANNOT-MEASURE rc=3, all-PASS rc=0
