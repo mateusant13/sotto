@@ -242,6 +242,26 @@ def main(argv=None):
           "distinct=%d de %d amostras" % (len(set(keys)), len(keys)))
     print("")
 
+    if args.neg_arm:
+        # O MUTANTE E' O QUE ESTE MODO PROVA, e ele tem de ser NOMEADO.
+        # MEDIDO 2026-11-27: o marcador do passo era o BANNER de arranque
+        # (`youtube-sync-oracle -- NEG-ARM`), impresso em `:129` ANTES de
+        # qualquer arm julgar -- logo qualquer rc=1, inclusive um traceback
+        # depois da linha 129, satisfazia o `:expectred`. A prova de que a
+        # mutacao LANDOU e' que os dois arms que ela ataca ficaram VERMELHOS:
+        # se o `replace` nao ancorar, 3.5 e 3.6 passam (o invariante deles
+        # continua valido no codigo sem mutacao) e este braco diz FAIL com
+        # rc=0, que e' o codigo de "nao apanhei".
+        faltam = [w for w in ('3.5 ', '3.6 ')
+                  if not any(n.startswith(w) for n in fails)]
+        if faltam:
+            print("NEG-ARM FAIL -- o mutante nao derrubou o(s) arm(s) %s: a ancora "
+                  "nao aplicou, logo nada foi provado"
+                  % ', '.join(w.strip() for w in faltam))
+            return 0
+        print("NEG-ARM PASS -- o mutante derrubou os dois arms da copia 1:1 (3.5, 3.6)")
+        return 1
+
     verdict = "PASS" if not fails else "FAIL"
     print("BATTERY-VERDICT youtube-sync-oracle %s  checks=%d fail=%d" % (verdict, checks, len(fails)))
     for name in fails:

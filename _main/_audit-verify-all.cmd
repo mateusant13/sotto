@@ -2054,8 +2054,8 @@ if exist _main\youtube-sync-oracle.py (
 ) else ( call :record youtube-sync MISSING )
 if exist _main\youtube-sync-oracle.py (
   call :step red-as-expected-youtube-sync 1 "_main\youtube-sync-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-sync-neg.log" python _main\youtube-sync-oracle.py --neg-arm
-  call :expectred red-as-expected-youtube-sync !STEP_RC! "%OUT%\youtube-sync-neg.log" "youtube-sync-oracle -- NEG-ARM"
-) else ( call :expectred red-as-expected-youtube-sync MISSING "%OUT%\youtube-sync-neg.log" "youtube-sync-oracle -- NEG-ARM" )
+  call :expectred red-as-expected-youtube-sync !STEP_RC! "%OUT%\youtube-sync-neg.log" "NEG-ARM PASS -- o mutante derrubou"
+) else ( call :expectred red-as-expected-youtube-sync MISSING "%OUT%\youtube-sync-neg.log" "NEG-ARM PASS -- o mutante derrubou" )
 if exist _main\youtube-verbatim-oracle.py (
   call :step youtube-verbatim 0 "_main\youtube-verbatim-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_window.py" "%OUT%\youtube-verbatim.log" python _main\youtube-verbatim-oracle.py
   call :record youtube-verbatim !STEP_RC!

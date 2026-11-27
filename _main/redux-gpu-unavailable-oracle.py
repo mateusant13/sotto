@@ -474,6 +474,11 @@ def arm_constructor_fallback_mutation(temp):
     assert "did not load CUDAExecutionProvider" in str(out["raised"]), out["raised"]
     assert out["reference"].ort.cpu_constructor_retries == len(EAGER_GRAPHS), (
         out["reference"].ort.calls)
+    # O TOKEN E' A PROVA. Sem ele, um arm que nao levanta nada (mutante que
+    # SOBREVIVEU, ou assert que ficou vazio) devolve `None`, indistinguivel de
+    # sucesso -- medido 2026-11-27: anular o assert da arm `run` continuava a
+    # imprimir `NEG-ARM: PASS (3/3)`.
+    return "constructor-fallback"
 
 
 def arm_run_fallback_mutation(temp):
@@ -496,7 +501,7 @@ def arm_run_fallback_mutation(temp):
     else:
         if out["reference"].ort.cpu_run_retries:
             print("EXPECTED-RED -- disabling runtime fallback removed; fake CPU retry observed")
-            return
+            return "run-fallback"
         raise AssertionError("run fallback mutation escaped the fake failure arm")
     raise AssertionError("run fallback mutation was rejected for an unexpected reason")
 
@@ -519,6 +524,7 @@ def arm_node_readback_skipped_mutation(temp):
     _model, proxy, _device, _failure = out["result"]
     assert set(proxy.node_assignment_readback) != set(ALL_GRAPHS), (
         "removing the node-assignment census was not caught by readback coverage")
+    return "no-node-readback"
 
 
 def positive():
@@ -534,19 +540,44 @@ def positive():
     return 4
 
 
+#: Os tres mutantes, por NOME. O numero publicado passa a ser CONTADO a partir
+#: desta lista e nao escrito a mao: `return 3` incondicional tornava
+#: `NEG-ARM: PASS (3/3 ...)` uma frase que nenhuma medicao produzia -- se uma
+#: ancora deixasse de aplicar e o assert dela ficasse vazio, o arm passava em
+#: silencio e o banner continuava a dizer 3/3. Medido 2026-11-27: o banner era
+#: incondicional porque `negative()` devolvia `3` sempre, e so' um arm que
+#: LEVANTA impedia o banner (verificado por falsificador: um arm mutado para
+#: levantar nao imprime `NEG-ARM: PASS`). O que faltava era o numero ser real.
+#: O PRIMEIRO CAMPO E' O TOKEN que o arm devolve quando a mutacao foi provada --
+#: e nao um rotulo: `negative()` compara-o e recusa um arm que devolva outra
+#: coisa, que e' o que um mutante sobrevivente faz.
+MUTATION_ARMS = (
+    ("constructor-fallback", arm_constructor_fallback_mutation,
+     "constructor fallback mutation rejected before CPU inference",
+     "constructor"),
+    ("run-fallback", arm_run_fallback_mutation,
+     "run fallback mutation kept a CPU retry", "run"),
+    ("no-node-readback", arm_node_readback_skipped_mutation,
+     "node-assignment census removal left readback empty", "no-readback"),
+)
+
+
 def negative():
     scratch = ROOT / ".agent-work"
     scratch.mkdir(exist_ok=True)
+    caught = 0
     with tempfile.TemporaryDirectory(prefix="sotto-redux-cuda-fallback-neg-",
                                      dir=scratch) as temp:
         root = Path(temp)
-        arm_constructor_fallback_mutation(root / "constructor")
-        print("EXPECTED-RED -- constructor fallback mutation rejected before CPU inference")
-        arm_run_fallback_mutation(root / "run")
-        print("EXPECTED-RED -- run fallback mutation kept a CPU retry")
-        arm_node_readback_skipped_mutation(root / "no-readback")
-        print("EXPECTED-RED -- node-assignment census removal left readback empty")
-    return 3
+        for token_expected, arm, sentence, dirname in MUTATION_ARMS:
+            token = arm(root / dirname)
+            if token != token_expected:
+                raise AssertionError(
+                    "o arm %r devolveu %r em vez da sua prova %r: o mutante nao "
+                    "foi provado" % (dirname, token, token_expected))
+            caught += 1
+            print("EXPECTED-RED -- %s" % sentence)
+    return caught
 
 
 def main():
@@ -557,8 +588,20 @@ def main():
                         help="run only targeted mutations; nonzero means caught")
     args = parser.parse_args()
     if args.neg_arm:
-        caught = negative()
-        print("NEG-ARM: PASS (%d/3 fallback+readback mutations caught)" % caught)
+        try:
+            caught = negative()
+        except AssertionError as exc:
+            # O MUTANTE SOBREVIVEU (ou a ancora deixou de aplicar): o braco NAO
+            # provou nada e diz isso com o codigo da casa para "nao apanhei".
+            print("NEG-ARM FAIL -- um arm nao ficou vermelho: %s" % (exc,))
+            return 0
+        missing = len(MUTATION_ARMS) - caught
+        if missing:
+            print("NEG-ARM FAIL -- %d de %d mutacoes nao correram"
+                  % (missing, len(MUTATION_ARMS)))
+            return 0
+        print("NEG-ARM: PASS (%d/%d fallback+readback mutations caught)"
+              % (caught, len(MUTATION_ARMS)))
         return 1
     checked = positive()
     if checked != 4:
@@ -567,7 +610,7 @@ def main():
         raise AssertionError("fake oracle exceeded one Python thread")
     if args.selftest:
         caught = negative()
-        if caught != 3:
+        if caught != len(MUTATION_ARMS):
             raise AssertionError("fallback mutation coverage changed: %d" % caught)
         if threading.active_count() != 1:
             raise AssertionError("fallback mutation oracle exceeded one Python thread")
