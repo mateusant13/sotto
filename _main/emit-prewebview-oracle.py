@@ -137,6 +137,24 @@ def _load(path):
     return mod
 
 
+def _kill_core_guard(src):
+    """Remove SO' a guarda `core is None` de `exec_js_post`, deixando `emit_async`.
+
+    O shell e' CRLF no disco e o oraculo le' com newline universal; a ancora e'
+    escrita em `\n` e comparada DEPOIS da mesma normalizacao, senao a mutacao
+    "nao muda o ficheiro" e o mutante passa por engano (medido 2026-11-27: foi
+    exactamente o que aconteceu na primeira versao deste helper).
+    """
+    text = src.replace("\r\n", "\n")
+    old = ("            core = self.core\n"
+           "            if core is None:\n")
+    new = ("            core = self.core\n"
+           "            if False and core is None:\n")
+    if text.count(old) != 1:
+        return src
+    return text.replace(old, new, 1)
+
+
 def _arms(path):
     """As seis arms sobre `path`. Devolve [(nome, ok, detalhe)] e NAO imprime."""
     _stub_system()
@@ -197,6 +215,37 @@ def _arms(path):
         len(shell.core.scripts) == before + 1,
         "scripts_depois=%d (antes=%d)"
         % (len(shell.core.scripts), before))
+
+    # arm D -- A OUTRA PORTA DO MESMO DEFEITO (2026-11-27): `exec_js_post` era a
+    # unica metade sem a guarda, e o log do dono mostra as CINCO linhas dela no
+    # arranque (11:45:11.272-279): `WARN exec_js_post failed: AttributeError`'NoneType'
+    # object has no attribute 'ExecuteScriptAsync'``. Um aviso por emit e' a mesma
+    # doenca do arm A, na porta ao lado.
+    shell = _Shell(None, None)
+    del captured[:]
+    raised_d = ""
+    for _ in range(50):
+        try:
+            mod.SottoShell.exec_js_post(shell, "window.__x=1")
+        except Exception as exc:                   # noqa: BLE001
+            raised_d = "%s: %s" % (type(exc).__name__, exc)
+            break
+    # `_Shell._post` corre o callable INLINE (e' o que a UI thread faria), logo
+    # nao ha' fila a drenar aqui -- `_DeferredShell` e' que a guarda.
+    deferred = [m for m in captured if "EXEC_JS_DEFERRED" in m]
+    warns = [m for m in captured if "exec_js_post failed" in m]
+    arm("exec_js_post sem pagina: UMA linha, ZERO WARN por emit",
+        not raised_d and len(deferred) == 1 and not warns,
+        "excepcao=%r EXEC_JS_DEFERRED=%d warns=%d"
+        % (raised_d or "nenhuma", len(deferred), len(warns)))
+
+    # arm E -- e com pagina o script E' postado (a guarda nao engole o canal)
+    core = _Core()
+    shell = _Shell(core, _WebView2())
+    ok_e = bool(mod.SottoShell.exec_js_post(shell, "window.__y=2"))
+    arm("exec_js_post com pagina posta o script",
+        ok_e and core.scripts and core.scripts[-1] == "window.__y=2",
+        "postado=%r scripts=%d" % (ok_e, len(core.scripts)))
 
     # arm D -- DUAS legendas na janela de um so' drain: as DUAS chegam, na
     # ordem. Uma legenda e' EVENTO (e' a pagina que a commita ao historico);
@@ -304,6 +353,13 @@ def main(argv) -> int:
                              "EVENT_EMIT_KINDS:" + _eol, 1),
                  ("duas legendas antes do drain",
                   "40 legendas com a pagina parada")),
+                # M3 (2026-11-27): a guarda que este oraculo passou a exigir em
+                # `exec_js_post` -- a porta que continuava sem ela. Sem este
+                # mutante, as arms D/E de hoje mediriam o codigo sem uma foto
+                # dos bytes de antes.
+                ("sem-guarda-no-exec-js-post",
+                 _kill_core_guard(src),
+                 ("exec_js_post sem pagina",)),
             ]
             for label, text, must_fail in mutants:
                 if text == src:

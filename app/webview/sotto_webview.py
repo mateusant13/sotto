@@ -16040,8 +16040,24 @@ class SottoShell:
         que mantem a ORDEM em relacao a todos os outros scripts postados.
         """
         def _run():
+            # A CORE AUSENTE NAO E' UM ERRO: NAO HA' PAGINA AINDA (2026-11-27).
+            # `self.core` nasce `None` (:13688) e volta a `None` quando o
+            # `_core_grab` nao responde (`NoAnswer`, :15658) -- os dois sao
+            # "sem pagina", a MESMA classe que o `ModuleNotFoundError` abaixo
+            # ja' tratava com UMA linha. Era a unica metade que faltava, e o
+            # sintoma esta' no log do dono: CINCO `WARN exec_js_post failed:
+            # AttributeError("'NoneType' object has no attribute
+            # 'ExecuteScriptAsync'")` em 11:45:11.272-279, no arranque --
+            # ruido de arranque a passar por defeito num caminho que ja'
+            # sabe que e' cedo de mais.
+            core = self.core
+            if core is None:
+                if not getattr(self, '_js_prewebview_logged', False):
+                    self._js_prewebview_logged = True
+                    log("EXEC_JS_DEFERRED reason=no-core yet")
+                return False
             try:
-                self.core.ExecuteScriptAsync(script)
+                core.ExecuteScriptAsync(script)
                 return True
             except Exception as exc:  # noqa: BLE001 -- uma mensagem perdida nao mata um show
                 warn(f'exec_js_post failed: {exc!r}')

@@ -1029,6 +1029,32 @@ um **TAB**; um blob binario publica `i/-text` e nao conta como divergente.
 stutter "resolvido" sem pid, fio e linha nao e' um stutter resolvido. Recibo de referencia:
 `_main/receipt-20261108-stutter-caption-tick.md`.
 
+## UMA GUARDA QUE EXISTE NUMA PORTA E FALTA NA VIZINHA E' MEIA GUARDA (medido 2026-11-27)
+
+O log do dono (`_main/webview-run.log`, sessao 11:45:10) tem, no arranque, **CINCO**
+`WARN exec_js_post failed: AttributeError("'NoneType' object has no attribute
+'ExecuteScriptAsync'")` em 11:45:11.272-279. Nao e' um core quebrado: e' a mesma
+classe que `emit_async` ja' tratava com UMA linha (`EXEC_JS_DEFERRED
+reason=no-form yet`), a faltar na porta ao lado.
+
+- **2026-11-27 · `self.core is None` significa SEM PAGINA AINDA, e nao e' erro.**
+  `core` nasce `None` (`sotto_webview.py:13688`) e volta a `None` quando o
+  `_core_grab` nao responde (`NoAnswer`, `:15658`). Nos dois casos a resposta certa
+  e' a MESMA do `ModuleNotFoundError` que o metodo ja' tratava: uma linha por
+  processo e `return False`. Um `warn` por emit e' o defeito, porque o pipeline de
+  legendas arranca ANTES do WebView2 de proposito.
+- **A regra geral, e ela vale para qualquer guarda deste repo:** uma guarda escrita
+  para uma porta tem de ser procurada nas portas IRMAS no mesmo commit. A medicao
+  que a exprime: as duas funcoes escrevem no mesmo objecto (`self.core`), tem o
+  mesmo contrato ("notificacao sem resposta que se use") e o mesmo modo de falha,
+  e so' uma delas tinha a guarda. Enquanto a metade faltava, o defeito aparecia
+  como cinco linhas por arranque em vez de uma.
+- **Portao:** `_main/emit-prewebview-oracle.py`, arms `D` (50 chamadas sem pagina ->
+  UMA linha `EXEC_JS_DEFERRED` e ZERO `warn`) e `E` (com pagina o script E'
+  postado -- a guarda nao engole o canal), mais o mutante
+  `sem-guarda-no-exec-js-post` que reverte SO' a guarda daquela porta.
+  `8 PASS / 0 FAIL`, `NEG-ARM PASS: 3 de 3`, rc=1 no `--neg-arm`.
+
 ## O CUSTO DO PASSO MEDE-SE EM SEGUNDOS DE CPU; A PAREDE DENTRO DA JAULA MEDE A JAULA (2026-11-26)
 
 Medido nesta maquina no mesmo comando: **0,36 s solto · 7,24 s em `--cpu 40` · 62,12 s em `--cpu 40
