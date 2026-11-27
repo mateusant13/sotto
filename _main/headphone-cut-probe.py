@@ -266,7 +266,12 @@ def run(seconds, out_path=None, keep=True):
             for row in ev.rows:
                 handle.write(json.dumps(row, ensure_ascii=False) + '\n')
         print('eventos escritos em %s (%d)' % (out_path, len(ev.rows)))
-    return verdict(ev.rows, rows, samples, seconds_real)
+    events_n, flips, culprit = verdict(ev.rows, rows, samples, seconds_real)
+    # O TERCEIRO VALOR E' A CAPACIDADE DE OUVIR, e sem ela nao ha medicao. Uma janela
+    # CALMA e' um resultado (o `verdict` diz "ausencia de observacao" e nao acusa
+    # ninguem); um instrumento que nao conseguiu REGISTAR o callback e' cegueira, e
+    # cegueira nao pode ser gravada como verde por um `:record`.
+    return events_n, flips, culprit, registered
 
 
 def selftest():
@@ -351,7 +356,20 @@ def main():
         print('NEG-ARM PASS -- RED as designed: janela vazia nao acusa ninguem' if ok
               else 'NEG-ARM FAIL -- o veredicto inventou culpa sem evento')
         return 1 if ok else 0
-    return 0 if run(args.seconds, args.out) else 0
+    events_n, flips, culprit, registered = run(args.seconds, args.out)
+    # MEDIDO 2026-11-27: este `return 0 if run(...) else 0` tinha os DOIS ramos a 0, e
+    # `run()` devolve uma 3-tupla (sempre verdadeira) -- a condicao era morta, o rc nunca
+    # variava, e o `:record` de `headphone-cut` gravava verde mesmo quando `:240` dizia
+    # `registro-falhou` e `:243` imprimia `SEM NOTIFICACAO`.
+    # O QUE SE JULGA E' A CAPACIDADE DE OUVIR, NAO O SILENCIO: uma janela calma e' um
+    # resultado legitimo (o `verdict` diz "ausencia de observacao" e nao acusa ninguem),
+    # mas um callback que nao registou e' cegueira -- e um instrumento cego a escrever
+    # rc=0 e' a doenca do "grep deu ZERO" que esta casa ja' pagou caro.
+    print('HEADPHONE-CUT GATE %s -- %s' % (
+        'PASS' if registered else 'CANNOT-MEASURE',
+        'a sonda ouviu a janela (eventos=%d mute_flips=%d)' % (events_n, flips)
+        if registered else 'SEM NOTIFICACAO: o callback nao registou, nada foi medido'))
+    return 0 if registered else 1
 
 
 if __name__ == '__main__':

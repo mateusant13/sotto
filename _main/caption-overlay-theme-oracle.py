@@ -66,8 +66,14 @@ PIXEL_TOL = 8
 
 
 def _fail(msg):
+    # O rc E' O VEREDITO (medido 2026-11-27). Este `return 0` punha `VERDICT: FAIL`
+    # no log e um 0 no rc, e o passo `caption-overlay-theme` do `.cmd` e' um `:step 0`
+    # + `:record` -- logo um payload que nao se conseguiu construir, ou uma populacao
+    # abaixo do piso, eram gravados como PORTAO VERDE. `:record` so' conhece 0 como
+    # passagem; qualquer outra coisa e' FAILED ou MISSING. As tres chamadas
+    # (`:296/:299/:301`) sao o unico caminho de falha deste ficheiro.
     print(f'VERDICT: FAIL -- {msg}')
-    return 0
+    return 1
 
 
 def _extract(path):

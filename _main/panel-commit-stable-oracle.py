@@ -494,7 +494,10 @@ def main():
                cell(before['legs']['pushToPaint']['p50'])))
         if not control:
             say('VERDICT: FAIL -- the control did NOT go back up, so the after arm proves nothing')
-            sys.exit(0)
+            # O rc E' O VEREDITO (medido 2026-11-27). Aqui havia `sys.exit(0)` depois de
+            # um `VERDICT: FAIL`: a bateria ainda o apanhava porque o `:expectred` exige
+            # rc=1, mas qualquer chamador directo lia um controlo falhado como sucesso.
+            sys.exit(1)
         say('VERDICT: RED BY DESIGN (the control is the defect: the ceiling is the clock again)')
         sys.exit(1)
 

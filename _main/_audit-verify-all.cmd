@@ -572,7 +572,7 @@ REM `self.visible`) e exige as quatro apanhadas.
 call :step always caption-overlay-screen 0 "_main\caption-overlay-screen-oracle.py;app\webview\caption_overlay.py" "%OUT%\caption-overlay-screen.log" python _main\caption-overlay-screen-oracle.py
 call :record caption-overlay-screen !STEP_RC!
 call :step always red-as-expected-caption-overlay-screen 1 "_main\caption-overlay-screen-oracle.py;app\webview\caption_overlay.py" "%OUT%\caption-overlay-screen-neg.log" python _main\caption-overlay-screen-oracle.py --neg-arm
-call :expectred red-as-expected-caption-overlay-screen !STEP_RC! "%OUT%\caption-overlay-screen-neg.log" "NEG-ARM"
+call :expectred red-as-expected-caption-overlay-screen !STEP_RC! "%OUT%\caption-overlay-screen-neg.log" "NEG-ARM: PASS"
 REM `youtube-cdp-boot` (2026-11-04): o arranque chamava `self._yt_cdp_ensure()`, que NAO EXISTE -- o
 REM `AttributeError` era engolido como `YOUTUBE_CDP_PREOPEN_FAILED` e a ligacao nunca era pedida
 REM (medido: 1482 de 3972 linhas `YOUTUBE_TICK_MS` com `src='?'`). O oraculo executa o pedido de
@@ -2824,8 +2824,8 @@ call :record youtube-drift !STEP_RC!
 ) else ( call :record youtube-drift MISSING )
 if exist _main\youtube-drift-oracle.py (
 call :step always red-as-expected-youtube-drift 1 "_main\youtube-drift-oracle.py;_main\fixtures\yt-WdaHAGRBB6s.en-orig.json3;_main\fixtures\yt-WdaHAGRBB6s.live-compare-20261026.json" "%OUT%\youtube-drift-neg.log" python _main\youtube-drift-oracle.py --neg-arm
-call :expectred red-as-expected-youtube-drift !STEP_RC! "%OUT%\youtube-drift-neg.log" "NEG-ARM"
-) else ( call :expectred red-as-expected-youtube-drift MISSING "%OUT%\youtube-drift-neg.log" "NEG-ARM" )
+call :expectred red-as-expected-youtube-drift !STEP_RC! "%OUT%\youtube-drift-neg.log" "NEG-ARM PASS:"
+) else ( call :expectred red-as-expected-youtube-drift MISSING "%OUT%\youtube-drift-neg.log" "NEG-ARM PASS:" )
 
 REM ---------------------------------------------------------------------------
 REM AS LEIS DO CAMINHO 1:1 (2026-10-29). O DONO, 2026-10-29, verbatim:
@@ -4130,8 +4130,8 @@ call :record load-shedding !STEP_RC!
 
 if exist _main\altc-first-caption-oracle.py (
 call :step always red-as-expected-altc-first-caption 1 "_main\altc-first-caption-oracle.py" "%OUT%\altc-first-caption-neg.log" python _main\altc-first-caption-oracle.py --neg-arm
-call :expectred red-as-expected-altc-first-caption !STEP_RC! "%OUT%\altc-first-caption-neg.log" "NEG-ARM PASS"
-) else ( call :expectred red-as-expected-altc-first-caption MISSING "%OUT%\altc-first-caption-neg.log" "NEG-ARM PASS" )
+call :expectred red-as-expected-altc-first-caption !STEP_RC! "%OUT%\altc-first-caption-neg.log" "NEG-ARM PASS cases="
+) else ( call :expectred red-as-expected-altc-first-caption MISSING "%OUT%\altc-first-caption-neg.log" "NEG-ARM PASS cases=" )
 
 if exist _main\altc-gesture-oracle.py (
 call :step always red-as-expected-altc-gesture 1 "_main\altc-gesture-oracle.py;_main\_astcache.py;app\webview\sotto_webview.py;app\webview\hotkey_gesture.py" "%OUT%\altc-gesture-neg.log" python _main\altc-gesture-oracle.py --neg-arm
