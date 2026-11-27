@@ -959,10 +959,13 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-27, depois dos pares `artifact-manifest` e
-  `unreferenced-census`):**
-  `_main\_audit-verify-all.cmd` = **456529 B**, **5201 CRLF** / 0 bare LF,
-  sha256 `B70AD32D2AC48806CA445D9D9E57FD911DF359E26BF7A30EC117344578DF42FF`.
+- **PIN do ficheiro (re-medido 2026-11-27, depois do par `youtube-sync`):**
+  `_main\_audit-verify-all.cmd` = **457800 B**, **5215 CRLF** / 0 bare LF,
+  sha256 `7C90310D84F49C33EE72F5A4F6108E2060147A3D362D21EEEE65D7195699F191`.
+  (O par entrou porque `youtube-sync-oracle.py` era o UNICO oraculo da familia do
+  YouTube fora da bateria -- 56 passos ligados, 0 chamadores -- e por isso a arm
+  3.5 dele ficou VERMELHA sem dono, a exigir `window_by_paint` onde o dono mandou
+  copiar 1:1. Instrumento que ninguem corre nao e' instrumento.)
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (O par de 2026-11-27 julga a TABELA DE ARTEFACTOS e o CENSO DE ORFAOS -- ver o recibo
   `_main/receipt-20261127-*`. O historico passo-a-passo de cada par vive em

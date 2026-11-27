@@ -2032,6 +2032,20 @@ REM cortava em `cap = min(pintado, relogio_de_palavra)`: meia palavra, linha a
 REM construir-se, e o cue anterior empilhado por baixo) e passou a devolver as
 REM LINHAS que o player desenha, uma por linha, inteiras, com o `>>` removido.
 REM `always` porque le o SHELL e o `youtube_window.py` ao vivo.
+REM `youtube-sync-oracle.py` era o UNICO oraculo da familia do YouTube fora desta
+REM bateria (56 passos ligados, 0 chamadores), e por isso a arm 3.5 dele ficou
+REM VERMELHA sem dono: ela exigia `window_by_paint` no sitio `painted`, que o dono
+REM mandou TIRAR (*"copiando 1:1 sem truncar palavras"*, 2026-11-02). O braco
+REM passou a exigir a copia 1:1 e a AUSENCIA do re-quebrar (2026-11-27), e o par
+REM entra aqui para nao voltar a apodrecer fora da vista.
+if exist _main\youtube-sync-oracle.py (
+  call :step youtube-sync 0 "_main\youtube-sync-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_window.py;app\webview\youtube_reveal.py" "%OUT%\youtube-sync.log" python _main\youtube-sync-oracle.py
+  call :record youtube-sync !STEP_RC!
+) else ( call :record youtube-sync MISSING )
+if exist _main\youtube-sync-oracle.py (
+  call :step red-as-expected-youtube-sync 1 "_main\youtube-sync-oracle.py;app\webview\sotto_webview.py" "%OUT%\youtube-sync-neg.log" python _main\youtube-sync-oracle.py --neg-arm
+  call :expectred red-as-expected-youtube-sync !STEP_RC! "%OUT%\youtube-sync-neg.log" "youtube-sync-oracle -- NEG-ARM"
+) else ( call :expectred red-as-expected-youtube-sync MISSING "%OUT%\youtube-sync-neg.log" "youtube-sync-oracle -- NEG-ARM" )
 if exist _main\youtube-verbatim-oracle.py (
   call :step youtube-verbatim 0 "_main\youtube-verbatim-oracle.py;app\webview\sotto_webview.py;app\webview\youtube_window.py" "%OUT%\youtube-verbatim.log" python _main\youtube-verbatim-oracle.py
   call :record youtube-verbatim !STEP_RC!

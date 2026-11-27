@@ -166,6 +166,13 @@ def main(argv=None):
     # ---------------- ARM 3 ----------------
     print("ARM 3  o caminho vivo devolve a JANELA, nos dois sitios")
     src = io.open(SHELL, encoding="utf-8", newline="").read()
+    if args.neg_arm:
+        # O MUTANTE DE 3.5/3.6 (2026-11-27): devolve ao sitio `painted` o
+        # re-quebrar que o dono mandou tirar, e remove a copia 1:1. As duas
+        # arms tem de cair; se so' uma cair, o braco nao cobre o par.
+        src = src.replace(
+            "lines = self._yt_rows(painted, hwnd, uia, UIA)",
+            "lines = youtube_reveal.window_by_paint(cues, t)")
     check("3.1 existe o helper _yt_lines", "def _yt_lines(self, track, t)" in src)
     check("3.2 o helper usa a JANELA do youtube_window, com a revelacao do YouTube",
           "youtube_window.revealed_lines(cues, t, 2)" in src)
@@ -195,9 +202,32 @@ def main(argv=None):
     check("3.4 todo o sitio do relogio usa _yt_lines (>=2, hoje 3)",
           _sites >= 2 and "lines = self._yt_lines(track," in src,
           "count=%d" % _sites)
-    check("3.5 o sitio pintado usa a janela revelada pela PINTURA",
-          "youtube_reveal.window_by_paint(" in src,
-          "window_by_paint ausente: o ramo `painted` voltou a um relogio estimado")
+    # 3.5 RE-ANCORADO A 2026-11-27, e o braco anterior exigia o CONTRARIO do que
+    # o dono ordenou. Ele pedia `youtube_reveal.window_by_paint(` no sitio
+    # `painted`; essa funcao RE-QUEBRA a partir da faixa e corta em
+    # `cap = min(pintado, relogio_de_palavra)`, e dai' vinham as tres coisas que
+    # ele fotografou: a linha a CONSTRUIR-SE ao longo do cue, a meia palavra
+    # (`Yamato ja' d`) e a janela a empilhar o cue anterior por baixo. Ordem
+    # dele, verbatim: *"sotto devia ta copiando 1:1 sem truncar palavras"*. O
+    # sitio `painted` passou a devolver AS LINHAS PINTADAS, inteiras
+    # (`self._yt_rows(painted, ...)`), e o comentario da shell nomeia a remocao.
+    # O invariante que este braco guarda e' o do DONO -- as linhas pintadas sao
+    # o texto, uma por linha --, nao o nome de uma funcao que ja' nao pertence
+    # aquele sitio. As outras duas chamadas a `window_by_paint` continuam a ter
+    # de existir onde a janela E' reconstruida (o caminho sem pintura).
+    _painted_site = "lines = self._yt_rows(painted, hwnd, uia, UIA)" in src
+    _rebuild_sites = src.count("youtube_reveal.window_by_paint(")
+    check("3.5 o sitio pintado copia as linhas PINTADAS, 1:1 (sem re-quebrar)",
+          _painted_site,
+          "as linhas pintadas deixaram de ser o texto servido no ramo `painted`")
+    # 3.6 FECHADO POR MEDICAO, nao por isencao (2026-11-27): `window_by_paint`
+    # tem ZERO chamadores em producao -- o unico sitio que a usava era o ramo
+    # `painted`, e foi ela que o dono mandou tirar. Uma arm que exigisse
+    # `count >= 1` estaria a exigir codigo morto de volta; o numero fica
+    # publicado como INFORMACAO e a ausencia e' o estado correto.
+    check("3.6 window_by_paint nao voltou a producao (0 chamadores e' o certo)",
+          _rebuild_sites == 0,
+          "count=%d -- alguem reintroduziu o re-quebrar no caminho" % _rebuild_sites)
     print("")
 
     # ---------------- ARM 4 ----------------
