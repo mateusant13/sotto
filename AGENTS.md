@@ -623,20 +623,11 @@ testemunhas a discordar no MESMO tick: `YOUTUBE_PAUSE_DISAGREED clock_rate=0.58`
 - **A prova depois do reinicio dele e' um comando:**
   `python _main/yt-pause-disagreement-oracle.py --log _main/webview-run.log` -> `CLEAN`. A janela
   DEFAULT e' a ultima sessao (`SHELL_STARTUP_STAGE`); `--since 'YYYY-MM-DD HH:MM'` escolhe outra.
-- **O DANO E' O APAGAR, NAO A CONVERGENCIA (corrigido 2026-11-27, e o numero e' o que o condenou).**
-  A regra antiga chamava contradicao a qualquer `YOUTUBE_PAUSE_PROVEN` a menos de 5 linhas de um
-  `YOUTUBE_PAUSE_DISAGREED` com o mesmo `t`: **32 episodios** no log inteiro e **9 na ultima sessao
-  do dono** -- mas nessa sessao havia **UM** `CAPTION_WINDOW_BLANKED reason=youtube-paused` em 23 395
-  linhas, e ele veio de um `PROVEN held_s=0.5 t=2.85` com o `RESUMED` 13 linhas depois. **Zero dano.**
-  O que ela acusava era `pause_proven` a funcionar: a 1a foto ainda andava (DISAGREED), a 2a ja'
-  estava parada (PROVEN). A regra nova exige a CONJUNCAO de dano -- um `CAPTION_WINDOW_BLANKED
-  reason=youtube-paused*` armado por um `PROVEN` cujo proprio episodio mediu `DISAGREED` no mesmo `t`
-  (`T_MATCH_S = 0.05`), mesmo video, a menos de 8 linhas -- e devolve as duas direcoes medidas hoje,
-  na MESMA arvore: a ultima sessao `episodes=27 contradicted=0 settled=9 VERDICT: CLEAN` (rc 0), e a
-  janela pre-fix `--since '2026-11-26 02:37:5'` `contradicted=2` nos dois episodios das 02:38.017/:10
-  (`rc 1`). Portao: as 5 arms + os **9** mutantes do `--neg-arm` do
-  `_main/yt-pause-disagreement-oracle.py`, incluindo os dois mutantes do CLASSIFICADOR
-  (`e-volta-a-regra-antiga`, `e-cego-ao-carimbo`).
+- **O DANO E' O APAGAR, NAO A CONVERGENCIA (2026-11-27).** `t` e' invariante em pausa, logo casar
+  `PROVEN` com `DISAGREED` por `|dt| <= 0.05` mede convergencia e acusa codigo certo. A regra e' a
+  conjuncao de dano: um `CAPTION_WINDOW_BLANKED reason=youtube-paused*` armado por um `PROVEN` cujo
+  proprio episodio mediu `DISAGREED` no mesmo `t`, mesmo video, <= 8 linhas. Portao: 5 arms + 9
+  mutantes. Numeros e a correccao: `_main/receipt-20261127-pause-oracle-and-monolith-floor.md`.
 
 ## UM SILENCIO NO LOG TEM DOIS DONOS, E O PRODUTO TEM DE DIZER QUAL (medido 2026-11-26)
 
@@ -933,63 +924,9 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   `_main\_audit-verify-all.cmd` = **456529 B**, **5201 CRLF** / 0 bare LF,
   sha256 `B70AD32D2AC48806CA445D9D9E57FD911DF359E26BF7A30EC117344578DF42FF`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
-  (O par de 2026-11-27 mais recente julga o CENSO DE ORFAOS
-  `_main/unreferenced-oracle-census.py` + `--neg-arm`: o numero "203 scripts
-  sem chamador" era impressao sem instrumento e hoje e' uma contagem por
-  evidencia real -- GATED 318 / REFERENCED 154 / DOCUMENTED 151 / ORPHAN 161 de
-  784, com dois mutantes de CLASSIFICADOR a ficarem vermelhos. Nada e' apagado
-  por esse passo.)
-  (O par de 2026-11-27 julga a TABELA DE ARTEFACTOS: o instrumento da frota so'
-  reprova OVER e TRUNCATED, logo uma familia `roots` inexistente imprimia EMPTY com
-  rc 0 e duas familias sobrepostas somavam o mesmo byte duas vezes -- medido nesta
-  arvore, 1.20 GiB de hardlinks contados 2x num total de 2.99 GiB quando o volume
-  tem 1.80 GiB. `_main/artifact-manifest-oracle.py` tem 5 arms sobre o payload real
-  e 4 mutantes no `--neg-arm`.)
-  (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
-  `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
-  `panel-language` entraram depois, tambem em par com o seu `red-as-expected`, e os dois passos
-  do `history-gallery` saíram com o modulo que eles julgavam. 2026-11-25 (mais tarde): entraram
-  `panel-chrome` + `panel-chrome-neg` e `base-themes` + `base-themes-neg` -- os dois instrumentos
-  existiam e nenhum estava ligado a esta bateria. 2026-11-26: entraram dois pares novos do
-  congelamento da legenda do YouTube -- `yt-pause-disagreement` (uma pausa que a MEDIDA desmentiu
-  nao apaga o ecra) e `yt-diag-truth` (o rotulo `why='painted'` nao sobrevive a' foto que o
-  produziu). 2026-11-26: entraram `audio-ring-journal` (o journal do anel de audio crescia para
-  sempre) e `dead-unwired` (os dois modulos sem fio e a contagem de scripts da pagina), cada um em
-  par com o seu `red-as-expected`; o censo `battery-wiring` recusou os dois como `new-unwired`
-  antes de o par existir. Tambem em 2026-11-26: `yt-producer-soak` (5 minutos simulados de leitura
-  com um produtor que publica no proprio relogio) e `yt-producer-soak-neg`. E, a fechar o angulo A3,
-  `product-soak` + `red-as-expected-product-soak`: o soak lido dos artefactos do PROPRIO produto
-  (log da shell + `history/`), exigindo que relogio, superficie pintada e historico avancem na
-  mesma sessao; sessao abaixo da barra responde `CANNOT-MEASURE` (nunca verde).
-  E `yt-reveal-hold` + `red-as-expected-yt-reveal-hold`: o tecto de 3 s do relogio da
-  revelacao (`_PlayerCue.clock`) parava a linha em SILENCIO -- agora nomeia o episodio
-  (`CAPTION_REVEAL_HELD gap_s=.. lost_s=..`) e o oraculo prova que ele nunca inventa mais
-  de `PLAYER_HOLD_S` de video, com o buraco de 8,2 s medido no log dele como arm.
-  E `overlay-ink` + `red-as-expected-overlay-ink`: a metade dos PIXEIS, lida do bitmap GDI+
-  FORA DO ECRA (tema sem placa, logo cada pixel com alfa e' glifo): tinta para a linha dele,
-  largura de tinta a seguir o texto, rasters diferentes por texto, zero tinta para legenda
-  vazia, e A->B->A de volta ao raster de A -- o cache de pintura nao serve outra linha.
-  E `history-replay` + `red-as-expected-history-replay`: 200 legendas pela regra real de
-  fusao dao 200 linhas distintas num ficheiro na forma do store, cada linha entregue duas
-  vezes nao duplica nada (a forma do defeito "517 de 2077"), crescer reescreve, repetir
-  noutro `start` entra e encolher nao apaga o rabo -- o que fecha tambem a idempotencia no
-  transcrito. E `yt-cdp-retry` + `red-as-expected-yt-cdp-retry`: a fonte CDP tinha um SENTINELA como
-  lapide -- uma excecao transitoria de `start()` desligava o caminho barato para o resto da
-  sessao -- e agora arma um cooldown nomeado (5 s a duplicar ate' 60 s,
-  `YOUTUBE_CDP_SOURCE_RETRY tries=.. next_s=..`), provado por um arm que conduz duas falhas
-  e uma boa largada em 300 s de ticks a 4 Hz contra o controle da lapide. E `yt-read-budget` + `red-as-expected-yt-read-budget`: o ramo UIA da leitura da
-  legenda ganhou ORCAMENTO com recusa nomeada (`YOUTUBE_UIA_SLOW_BUDGET ms=.. hold_s=..`)
-  -- a cadencia simulada com os numeros DELE vai de 0,067 Hz (a leitura de 15906 ms a
-  2026-11-26, a fechar o revival: entraram `dm-triage` + `red-as-expected-dm-triage` (o oraculo
-  do triage de uma queixa de stutter estava `new-unwired`, e um instrumento que nunca corre nao
-  e' um instrumento) e os seis passos da skill `project-revival` que julgam o ESTADO do projeto
-  -- `feature-map-gate`, `benchmark-gate`, `friction-gate` e o `--selftest` de cada um (que e'
-  o braco vermelho: cada selftest prova la' dentro que um repo regredido devolve rc != 0). Cada
-  par e' guardado por `if exist`, logo uma maquina sem a skill publica `:record ... MISSING`
-  em vez de um verde.
-  bloquear o laco de 4 Hz) para 2,95 Hz. E `altc-soak` + `red-as-expected-altc-soak`: 200 toques de Alt+C a 3 s no
-  modulo puro, provando que toque unico nunca abre o painel da direita e que nenhum
-  contentor do modulo cresce em 200 chamadas.)
+  (O par de 2026-11-27 julga a TABELA DE ARTEFACTOS e o CENSO DE ORFAOS -- ver o recibo
+  `_main/receipt-20261127-*`. O historico passo-a-passo de cada par vive em
+  `docs/AGENTS-archive-20261021.md` (§ bateria), nao aqui: este ficheiro carrega as REGRAS.)
 
 ## `git rm --cached` SO' CONTA QUANDO `git ls-tree HEAD` CONCORDA (medido 2026-11-26)
 

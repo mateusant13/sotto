@@ -1299,3 +1299,62 @@ every use); `SetWindowPos` without declared `argtypes` fails SILENTLY with `last
 `BRIDGE_PROBE.methods` = 17; hot reload = DEBOUNCE 2000 ms → GUARD `capture-started` → BOUNDARY at
 the first closed line (`final:true`) → CEILING 25 000 ms forced → FLOOR 180 000 ms; the meter
 delivers EVERY sample to the page and limits only the LOG, 1 line per 30 s.
+
+## Bateria -- historico dos pares acrescentados (movido de AGENTS.md em 2026-11-27)
+
+> Movido por dever de transporte: `AGENTS.md` carrega as REGRAS, a historia vive aqui.
+
+(O ultimo par julga o CENSO DE ORFAOS `_main/unreferenced-oracle-census.py`: a contagem por
+evidencia real substitui o "203 scripts sem chamador", que era impressao sem instrumento.
+Detalhe no recibo de 2026-11-27 acima.)
+(O par de 2026-11-27 julga a TABELA DE ARTEFACTOS: o instrumento da frota so'
+reprova OVER e TRUNCATED, logo uma familia `roots` inexistente imprimia EMPTY com
+rc 0 e duas familias sobrepostas somavam o mesmo byte duas vezes -- medido nesta
+arvore, 1.20 GiB de hardlinks contados 2x num total de 2.99 GiB quando o volume
+tem 1.80 GiB. `_main/artifact-manifest-oracle.py` tem 5 arms sobre o payload real
+e 4 mutantes no `--neg-arm`.)
+(Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
+`punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
+`panel-language` entraram depois, tambem em par com o seu `red-as-expected`, e os dois passos
+do `history-gallery` saíram com o modulo que eles julgavam. 2026-11-25 (mais tarde): entraram
+`panel-chrome` + `panel-chrome-neg` e `base-themes` + `base-themes-neg` -- os dois instrumentos
+existiam e nenhum estava ligado a esta bateria. 2026-11-26: entraram dois pares novos do
+congelamento da legenda do YouTube -- `yt-pause-disagreement` (uma pausa que a MEDIDA desmentiu
+nao apaga o ecra) e `yt-diag-truth` (o rotulo `why='painted'` nao sobrevive a' foto que o
+produziu). 2026-11-26: entraram `audio-ring-journal` (o journal do anel de audio crescia para
+sempre) e `dead-unwired` (os dois modulos sem fio e a contagem de scripts da pagina), cada um em
+par com o seu `red-as-expected`; o censo `battery-wiring` recusou os dois como `new-unwired`
+antes de o par existir. Tambem em 2026-11-26: `yt-producer-soak` (5 minutos simulados de leitura
+com um produtor que publica no proprio relogio) e `yt-producer-soak-neg`. E, a fechar o angulo A3,
+`product-soak` + `red-as-expected-product-soak`: o soak lido dos artefactos do PROPRIO produto
+(log da shell + `history/`), exigindo que relogio, superficie pintada e historico avancem na
+mesma sessao; sessao abaixo da barra responde `CANNOT-MEASURE` (nunca verde).
+E `yt-reveal-hold` + `red-as-expected-yt-reveal-hold`: o tecto de 3 s do relogio da
+revelacao (`_PlayerCue.clock`) parava a linha em SILENCIO -- agora nomeia o episodio
+(`CAPTION_REVEAL_HELD gap_s=.. lost_s=..`) e o oraculo prova que ele nunca inventa mais
+de `PLAYER_HOLD_S` de video, com o buraco de 8,2 s medido no log dele como arm.
+E `overlay-ink` + `red-as-expected-overlay-ink`: a metade dos PIXEIS, lida do bitmap GDI+
+FORA DO ECRA (tema sem placa, logo cada pixel com alfa e' glifo): tinta para a linha dele,
+largura de tinta a seguir o texto, rasters diferentes por texto, zero tinta para legenda
+vazia, e A->B->A de volta ao raster de A -- o cache de pintura nao serve outra linha.
+E `history-replay` + `red-as-expected-history-replay`: 200 legendas pela regra real de
+fusao dao 200 linhas distintas num ficheiro na forma do store, cada linha entregue duas
+vezes nao duplica nada (a forma do defeito "517 de 2077"), crescer reescreve, repetir
+noutro `start` entra e encolher nao apaga o rabo -- o que fecha tambem a idempotencia no
+transcrito. E `yt-cdp-retry` + `red-as-expected-yt-cdp-retry`: a fonte CDP tinha um SENTINELA como
+lapide -- uma excecao transitoria de `start()` desligava o caminho barato para o resto da
+sessao -- e agora arma um cooldown nomeado (5 s a duplicar ate' 60 s,
+`YOUTUBE_CDP_SOURCE_RETRY tries=.. next_s=..`), provado por um arm que conduz duas falhas
+e uma boa largada em 300 s de ticks a 4 Hz contra o controle da lapide. E `yt-read-budget` + `red-as-expected-yt-read-budget`: o ramo UIA da leitura da
+legenda ganhou ORCAMENTO com recusa nomeada (`YOUTUBE_UIA_SLOW_BUDGET ms=.. hold_s=..`)
+-- a cadencia simulada com os numeros DELE vai de 0,067 Hz (a leitura de 15906 ms a
+2026-11-26, a fechar o revival: entraram `dm-triage` + `red-as-expected-dm-triage` (o oraculo
+do triage de uma queixa de stutter estava `new-unwired`, e um instrumento que nunca corre nao
+e' um instrumento) e os seis passos da skill `project-revival` que julgam o ESTADO do projeto
+-- `feature-map-gate`, `benchmark-gate`, `friction-gate` e o `--selftest` de cada um (que e'
+o braco vermelho: cada selftest prova la' dentro que um repo regredido devolve rc != 0). Cada
+par e' guardado por `if exist`, logo uma maquina sem a skill publica `:record ... MISSING`
+em vez de um verde.
+bloquear o laco de 4 Hz) para 2,95 Hz. E `altc-soak` + `red-as-expected-altc-soak`: 200 toques de Alt+C a 3 s no
+modulo puro, provando que toque unico nunca abre o painel da direita e que nenhum
+contentor do modulo cresce em 200 chamadas.)
