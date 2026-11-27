@@ -25,12 +25,17 @@ and a JSON string.
   isolation  ONE entry naming a method `SottoHost` does not have, injected into a
              COPY: it must be SKIPPED and NAMED, and a good kind must still
              dispatch. This arm must PASS on the live shell.
+  persisted  a FULL dispatch pass with EMPTY payloads must not rewrite the
+             owner's persisted caption settings or theme: every writer is
+             redirected to canary files and stubbed to an in-memory recorder.
   --neg-arm  M1: an ATTRIBUTE ACCESS written in the table (defect #1 exact
              shape) -- the whole table fails to build and the last-resort net is
              loud about it.
              M3: the isolation arm bad entry with the per-entry guard NEUTERED
              -- the good kind must DIE.
-             Both mutants must go RED, for the RIGHT reason, or this gate is not
+             P: the persistence stubs removed -- the canary is REWRITTEN and the
+             byte-identical checks go RED.
+             All mutants must go RED, for the RIGHT reason, or this gate is not
              saying NO to anything.
 """
 import argparse
@@ -107,6 +112,19 @@ GUARD_TEXT = ("            except () as exc:  # NEUTERED by --neg-arm: this catc
 BAD_KIND = 'bogusmutant'
 BAD_NAME = '_no_such_method_at_all'
 
+#: P -- the census is READ-ONLY: it dispatches empty payloads into the real
+#: handlers, and `_caption_visual`, `_caption_capture_exclude`,
+#: `_translation_target` and `_brand_tokens` all persist. The two disk writers
+#: in `caption_settings` (`save`, `set_theme`) are swapped for recorders.
+PERSIST_ANCHOR = "\nISOLATE_PERSISTENCE = True\n"
+PERSIST_TEXT = ("\nISOLATE_PERSISTENCE = False  # NEUTERED by --neg-arm: real "
+                "disk writers are back\n")
+ISOLATE_PERSISTENCE = True
+CANARY_SETTINGS = None
+CANARY_THEME = None
+WRITES = []
+_ORIGINAL_WRITERS = {}
+
 RESULTS = []
 UNCOUNTED = set()
 _TMP = []
@@ -160,6 +178,114 @@ def send(host, kind, payload=None):
 
 def kinds_in(src):
     return KIND_LINE.findall(src)
+
+
+def prepare_canaries():
+    """Copy the persisted files OUT of the owner's tree BEFORE any import.
+
+    `SOTTO_CAPTION_SETTINGS`/`SOTTO_CAPTION_THEME` are the product's own
+    redirection seams for oracles: every writer in `caption_settings` resolves
+    through them, so even a writer the stubs do not know about lands on a
+    canary, never on the owner's choices. A worktree has no owner file; a
+    deliberately NON-default fixture stands in there.
+    """
+    global CANARY_SETTINGS, CANARY_THEME
+    tmp = tempfile.mkdtemp(prefix='sotto-handler-persist-')
+    _TMP.append(tmp)
+    CANARY_SETTINGS = os.path.join(tmp, 'caption-settings.json')
+    CANARY_THEME = os.path.join(tmp, 'caption-theme.json')
+    sources = (
+        os.environ.get('SOTTO_CAPTION_SETTINGS')
+        or os.path.join(ROOT, '_main', 'caption-settings.json'),
+        os.environ.get('SOTTO_CAPTION_THEME')
+        or os.path.join(ROOT, '_main', 'caption-theme.json'),
+    )
+    seeds = (
+        (CANARY_SETTINGS, sources[0],
+         b'{\n  "capture_exclude": true,\n  "opacity": 0.55,\n'
+         b'  "plate": "normal",\n  "target_lang": "fr"\n}\n'),
+        (CANARY_THEME, sources[1],
+         b'{\n  "plate": "yes",\n  "rowBg": "#112233",\n'
+         b'  "theme": "cine-cellar"\n}\n'),
+    )
+    for dest, owner, seed in seeds:
+        if os.path.isfile(owner):
+            shutil.copy2(owner, dest)
+        else:
+            with open(dest, 'wb') as fh:
+                fh.write(seed)
+    os.environ['SOTTO_CAPTION_SETTINGS'] = CANARY_SETTINGS
+    os.environ['SOTTO_CAPTION_THEME'] = CANARY_THEME
+    return CANARY_SETTINGS, CANARY_THEME
+
+
+def install_persistence_stubs():
+    """Swap `caption_settings`' two disk writers for in-memory recorders."""
+    if _ORIGINAL_WRITERS:
+        return
+    load(os.path.join(ROOT, 'app', 'webview', 'caption_settings.py'),
+         'caption_settings')
+    import caption_settings
+    _ORIGINAL_WRITERS['save'] = caption_settings.save
+    _ORIGINAL_WRITERS['set_theme'] = caption_settings.set_theme
+
+    def record_save(settings):
+        WRITES.append(('save', json.dumps(settings, sort_keys=True)))
+        return caption_settings.path()
+
+    def record_theme(tokens):
+        WRITES.append(('theme', json.dumps(tokens, sort_keys=True)))
+        return caption_settings.theme_path()
+
+    caption_settings.save = record_save
+    caption_settings.set_theme = record_theme
+
+
+def restore_persistence_stubs():
+    """Put the real writers back -- only the neg-arm mutant calls this."""
+    if not _ORIGINAL_WRITERS:
+        return
+    import caption_settings
+    caption_settings.save = _ORIGINAL_WRITERS['save']
+    caption_settings.set_theme = _ORIGINAL_WRITERS['set_theme']
+    _ORIGINAL_WRITERS.clear()
+
+
+def snapshot(path):
+    with open(path, 'rb') as fh:
+        return fh.read(), os.stat(path).st_mtime_ns
+
+
+def persistence_arm(sw, src, tag='  persisted state: '):
+    """A full empty-payload census must leave the persisted files untouched.
+
+    The handlers are still called for real; only their persistence seams are
+    stubbed. The canaries are copies of the owner files (or a non-default
+    fixture in a worktree), so a removed stub REWRITES them and this arm goes
+    RED on both the bytes and the mtime.
+    """
+    if ISOLATE_PERSISTENCE:
+        install_persistence_stubs()
+    else:
+        restore_persistence_stubs()
+    del WRITES[:]
+    before = [snapshot(p) for p in (CANARY_SETTINGS, CANARY_THEME)]
+    seen = []
+    host = new_host(sw, seen)
+    for kind in sorted(kinds_in(src)):
+        send(host, kind)
+    after = [snapshot(p) for p in (CANARY_SETTINGS, CANARY_THEME)]
+    for name, path, was, now in zip(('settings', 'theme'),
+                                    (CANARY_SETTINGS, CANARY_THEME),
+                                    before, after):
+        check(tag + 'the persisted %s file is byte-identical after a full '
+              'dispatch' % name,
+              was == now,
+              'path=%s bytes=%d->%d mtime=%d->%d'
+              % (os.path.basename(path), len(was[0]), len(now[0]),
+                 was[1], now[1]))
+    check(tag + 'the write handlers ran but landed in the in-memory recorder',
+          bool(WRITES), 'recorded=%d write attempt(s)' % len(WRITES))
 
 
 def build_arm(sw, tag):
@@ -241,7 +367,7 @@ def mutant(src, edits, name):
         n = out.count(anchor)
         if n != 1:
             check('neg-arm %s: anchor #%d appears exactly once' % (name, i), False,
-                  'found %d time(s) in the live shell -- the mutant would be INERT '
+                  'found %d time(s) in the source -- the mutant would be INERT '
                   'or would mutate the wrong thing' % n)
             return None
         out = out.replace(anchor, replacement, 1)
@@ -266,11 +392,16 @@ def main():
     ap.add_argument('--neg-arm', action='store_true')
     args = ap.parse_args()
 
+    prepare_canaries()
+    install_persistence_stubs()
     src = open(SHELL, encoding='utf-8').read()
     sw = load(SHELL, 'sotto_shell_map_live')
     print('live shell %s  (%d B)' % (SHELL, os.path.getsize(SHELL)))
     print('-- control: the shipped handler table --')
     run_control(sw, src)
+
+    print('-- persisted state: a full empty-payload pass must WRITE nothing --')
+    persistence_arm(sw, src)
 
     print('-- isolation: ONE bad entry in a COPY must cost only its own kind --')
     iso = mutant(src, [(ISOLATION_ANCHOR, ISOLATION_TEXT)], 'isolation')
@@ -298,6 +429,22 @@ def main():
             check('neg-arm M3: the good kind DIES with the guard removed (RED on '
                   'the isolation check)',
                   any('GOOD kind still dispatches' in r[0] for r in red),
+                  'red=%s' % [r[0].strip()[:70] for r in red])
+
+        print('-- neg-arm P: the in-memory persistence stubs are removed --')
+        oracle_src = open(os.path.abspath(__file__), encoding='utf-8').read()
+        po = mutant(oracle_src, [(PERSIST_ANCHOR, PERSIST_TEXT)], 'persistence')
+        if po is not None:
+            po.ROOT = ROOT
+            po.SHELL = SHELL
+            po.CANARY_SETTINGS = CANARY_SETTINGS
+            po.CANARY_THEME = CANARY_THEME
+            # The mutant flips only the guard; the seams live in this process.
+            po.restore_persistence_stubs = restore_persistence_stubs
+            red = po.arm_failures(po.persistence_arm, sw, src)
+            check('neg-arm P: without the stubs the canary is REWRITTEN (RED on '
+                  'byte-identical)',
+                  any('byte-identical' in r[0] for r in red),
                   'red=%s' % [r[0].strip()[:70] for r in red])
 
     for tmp in _TMP:
