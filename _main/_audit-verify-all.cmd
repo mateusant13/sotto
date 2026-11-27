@@ -1608,6 +1608,18 @@ if exist _main\qi-log-bound-oracle.py (
 call :step red-as-expected-qi-log-bound 1 "_main\qi-log-bound-oracle.py;worker\sotto_worker.py" "%OUT%\qi-log-bound-neg.log" python _main\qi-log-bound-oracle.py --neg-arm
 call :expectred red-as-expected-qi-log-bound !STEP_RC! "%OUT%\qi-log-bound-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-qi-log-bound MISSING "%OUT%\qi-log-bound-neg.log" "NEG-ARM: PASS" )
+REM `revival-gate` -- O CONTRATO DE REVIVAL E UM FICHEIRO, E A MATRIZ TEM DE DIZER A VERDADE
+REM (medido 2026-11-27): `scripts\revival_gate.py` julga features/features.json + harness\angles.tsv +
+REM benchmarks\budgets.json + revival\GOAL.json e devolve rc. Uma linha sem comando, uma macro-feature
+REM nao declarada, um HOLE com comando e um gemeo `angulos.tsv` divergente sao os quatro mutantes.
+if exist scripts\revival_gate.py (
+call :step revival-gate 0 "scripts\revival_gate.py;harness\angles.tsv;harness\features-functional.json;features\features.json;benchmarks\budgets.json;revival\GOAL.json" "%OUT%\revival-gate.log" python scripts\revival_gate.py
+call :record revival-gate !STEP_RC!
+) else ( call :record revival-gate MISSING )
+if exist scripts\revival_gate.py (
+call :step red-as-expected-revival-gate 1 "scripts\revival_gate.py;harness\angles.tsv;harness\features-functional.json;harness\angulos.tsv;features\features.json;benchmarks\budgets.json;revival\GOAL.json" "%OUT%\revival-gate-neg.log" python scripts\revival_gate.py --neg-arm
+call :expectred red-as-expected-revival-gate !STEP_RC! "%OUT%\revival-gate-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-revival-gate MISSING "%OUT%\revival-gate-neg.log" "NEG-ARM: PASS" )
 REM `log-mirror-bound` -- O ESPELHO DO LOG NAO PODE CRESCER SEM TECTO (medido
 REM 2026-11-27, audit #8a). `_LOG_QUEUE` era um `SimpleQueue()` sem limite, com um
 REM `put` por linha de log e contagem nenhuma: um produtor que fala depressa

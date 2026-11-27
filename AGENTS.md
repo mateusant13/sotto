@@ -906,9 +906,9 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-27, depois dos pares `log-rotation` e `qi-log-bound`):**
-  `_main\_audit-verify-all.cmd` = **469851 B**, **5344 CRLF** / 0 bare LF,
-  sha256 `84FEE14242615CD73F052E6C4B25A2CD653669C858F1003B3ED08E179D74EE45`.
+- **PIN do ficheiro (re-medido 2026-11-27, depois do par `revival-gate`):**
+  `_main\_audit-verify-all.cmd` = **471121 B**, **5356 CRLF** / 0 bare LF,
+  sha256 `B1783CE6BB1B3898ED4968FA9D415166285BD485A2606C54838563567BF6D775`.
   (Pares ligados ate' hoje: `youtube-sync` -- unico oraculo da familia sem
   chamador --, `stepcache-skip-record` -- um passo SKIP-SLOW era adiado sem
   escrever custo nem razao, logo o ratchet lia um `elapsed_s` velho e um passo
@@ -917,7 +917,10 @@ Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no 
   sobre o volume do dono, e o oraculo nem devolvia codigo de saida: reescrito
   com 3 arms e 2 mutantes, dos quais `silent-except` E' o codigo do HEAD -- e
   `qi-log-bound` -- `qi_log.append` corria a cada `QueryInterface` num worker de
-  vida longa; a regra virou funcao pura e o mutante sem tecto tem de cair.)
+  vida longa; a regra virou funcao pura e o mutante sem tecto tem de cair -- e
+  `revival-gate` -- o contrato de revival passou a ser um FICHEIRO (`scripts/revival_gate.py`)
+  com quatro mutantes: linha sem comando, macro-feature nao declarada, HOLE com comando e
+  gemeo `harness/angulos.tsv` divergente.)
   O valor de `punct-model` passou a incluir `app\webview\sotto_webview.py` nas
   dependencias: a arm F3 dele exercita o `_consume` REAL, logo um HIT sem o shell
   na chave mediria codigo que a arm ja' nao le.)

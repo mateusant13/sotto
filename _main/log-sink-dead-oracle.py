@@ -48,6 +48,7 @@ medido hoje) e exige A2, A3, A4 e A5 vermelhas. O codigo de "apanhado" e' 1.
 import argparse
 import io
 import os
+import queue
 import sys
 import time
 
@@ -94,13 +95,34 @@ class LivePipe(object):
 
 
 class FileQueue(object):
-    """A fila do ficheiro: conta as linhas que o escritor receberia."""
+    """A fila do ficheiro: conta as linhas que o escritor receberia.
 
-    def __init__(self):
+    O nome `put_nowait` NAO E' DECORACAO (medido 2026-11-27): o produto passou a
+    usar `_LOG_QUEUE.put_nowait(...)` dentro de `_enqueue_log` para que a fila
+    seja limitada e conte o que largou. A arm anterior so' tinha `put`, logo o
+    oraculo media um AttributeError e dava 0/6 -- um alvo que a producao ja' nao
+    usa nao e' um alvo. `put` fica como apelido para nao quebrar mutantes antigos.
+    """
+
+    def __init__(self, maxsize=0):
         self.lines = []
+        self.maxsize = maxsize
 
-    def put(self, line):
+    def put_nowait(self, line):
+        if self.maxsize and len(self.lines) >= self.maxsize:
+            raise queue.Full
         self.lines.append(line)
+
+    def put(self, line, **kwargs):
+        self.put_nowait(line)
+
+    def qsize(self):
+        return len(self.lines)
+
+    def get_nowait(self):
+        if not self.lines:
+            raise queue.Empty
+        return self.lines.pop(0)
 
 
 class Arm(object):

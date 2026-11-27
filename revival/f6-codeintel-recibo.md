@@ -44,9 +44,19 @@ O `wired_read` tem populacao propria limitada a **8 arquivos**. Recusar em vez d
 parcial e' correto; o efeito e' que o veredicto unico deixa de distinguir "os outros 17 detectores
 acharam 58 coisas" de "nada foi medido". Os 58 achados estao no JSON.
 
-## O que falta neste repo
+## O que faltava neste repo -- e o que foi fechado depois desta medicao
 
-`harness/angulos.tsv` nao existe aqui (nem em VOD.RIP). E' a matriz de angulos falsificadores que
-gravador (122 L), codeintel (26 L), superharness (11 L) e !watcher (45 L) ja tem.
+Esta medicao e' de `19:48`; a matriz foi fechada no mesmo dia, com o numero medido:
+
+- `harness/angulos.tsv` **existe** desde 2026-11-27 e e' um HARDLINK de `harness/angles.tsv` (mesmo
+  inode, sha256 `118fc576c1d5bd32` nos dois nomes): o censo da frota le' `angulos.tsv`, o gerador do
+  AGENTS.md e as skills leem `angles.tsv`, e uma copia derivaria. 33 linhas de dados + 5 `HOLE:`
+  declarados.
+- `scripts/revival_gate.py` passou a ser o entrypoint em codigo: positivo `REVIVAL GATE PASS` rc 0,
+  `--neg-arm` rc 1 com 4/4 mutantes apanhados. Recibo:
+  `_main/receipt-20261127-f6-revival-gate-and-codeintel.md`.
+- A afirmacao "`--scope _main` estourou 400 s" desta folha continua valida e NAO foi refeita; a outra
+  fatia medida foi `--scope worker --max-population-files 4000` (populacao 319, 17/18 detectores,
+  82,27 s, rc 2).
 
 Placar dos 6 projetos: `H:/!gravador/revival/f6-frota.md`.
