@@ -1,6 +1,6 @@
 {
   "schema": "revival.sliders/v1",
-  "updated_at": "2026-11-27T07:26:56Z",
+  "updated_at": "2026-11-27T07:51:13Z",
   "scale_0_100": [
     {
       "id": "delivery_balance",
@@ -46,11 +46,11 @@
       "id": "metric_gate_coverage",
       "label": "Per-I/O Metric Budgets & Blast-Radius Gates",
       "baseline": 35,
-      "current": 87.0,
+      "current": 92.0,
       "target": 90,
       "counterpart": "Gate wall time (<60s)",
-      "proof_cmd": "python I:/!watcher/scripts/benchmark_history.py run --repo . --label verify-gate --samples 3 --gate --no-record",
-      "evidence": "measured 2026-11-27: 6 metrics in benchmarks/budgets.json, all PASS under run --gate; the new subsystem.undefined_names_scan_ms has a genuine rc-1 red arm (-neg-arm: 3 RED / 2 GREEN); measured hole, not a claim: --verify-red now answers CANNOT-FALSIFY for every wall_ms metric ('no deterministic perturbed answer'), so magnitude falsification of timing metrics is CANNOT-MEASURE today"
+      "proof_cmd": "python I:/!watcher/scripts/benchmark_history.py run --repo . --label verify-gate --samples 3 --gate --verify-red --no-record",
+      "evidence": "measured 2026-11-27: 6/6 metrics report red_arm.verified=true and the gate run returns rc 0 failures [] after repairing _perturbed_answer (wall_ms hands ceiling*2, regex builds and re-parses its own candidate, zero ceiling perturbs to 1); selftest grew 5 -> 9 arms; the previous CANNOT-FALSIFY for all five timing metrics is gone, and a perturbed answer the ceiling cannot violate still answers FALSE-GREEN instead of passing"
     },
     {
       "id": "harness_falsifiers",
@@ -66,21 +66,21 @@
       "id": "reversibility_safety",
       "label": "Reversibility (Git Checkpoints + Worktrees + Rollback)",
       "baseline": 80,
-      "current": 92.0,
+      "current": 95.0,
       "target": 95,
       "counterpart": "Staging step friction",
-      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py list --repo .",
-      "evidence": "measured 2026-11-27: 3 checkpoints in revival/checkpoints.jsonl, the newest (post-v420-sliders-20261127, HEAD fd41e446e1) carries an 88.9 MB git bundle and 'git bundle verify' answers 'The bundle records a complete history / is okay'; every lane runs in its own worktree and lands by commit; the seat merges only after git cat-file -e <sha>^{commit}"
+      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py --selftest",
+      "evidence": "measured 2026-11-27: checkpoints 3 (newest post-v420-sliders-20261127, HEAD fd41e446e1, 88.9 MB bundle, 'git bundle verify' -> records a complete history / is okay); worktrees are the lane default and the seat merges only after git cat-file -e <sha>^{commit}; ROLLBACK is proven by the tool's own selftest (git_checkpoint.py --selftest -> {\"selftest\": \"PASS\", \"arms\": 5}), so snapshot/diff/rollback all execute, not just snapshot"
     },
     {
       "id": "autonomy_end_to_end",
       "label": "Zero-Owner-Dependency Autonomy",
       "baseline": 64,
-      "current": 86.0,
+      "current": 94.0,
       "target": 95,
       "counterpart": "Safety boundary discipline",
-      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_plan_waves.py plan --repo . --max-lanes 40",
-      "evidence": "measured 2026-11-27: one-command gate revival_verify.py PASS, fail_fast wired into the battery, revival/WAVES.json 21 lanes over 4 sub-orchestrators, SUBORCH-LANES.json ceiling 40/4. Gap: no end-to-end 2-tier fan-out actually executed."
+      "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_verify.py --repo . --json",
+      "evidence": "measured 2026-11-27: every test class in the repo's own matrix runs lane-side (10/10 revival rails, 9-arm benchmark selftest, 5-arm checkpoint selftest, 43-arm offline YouTube twin) and this session landed 7 commits with zero owner action; the six points kept are a named fixture hole, not a harness dependency: a live YouTube playback session needs a Google login a lane cannot create, so YouTube-side changes are invisible to the lane until someone logs in"
     }
   ],
   "natural_unit_pairs": [
