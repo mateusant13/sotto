@@ -406,3 +406,8 @@ _main/bench/logs/
 _main/bench/live-youtube-20261117/
 _main/bench/_arm_a_payload.json
 sotto-visual-design-directions.zip
+
+# Gerado por `python tools/project_prep.py` no watcher, a partir do [[projects]]
+# do governor: e' um DERIVADO. Re-corre a ferramenta em vez de versionar o derivado
+# (medido 2026-11-27: era o unico ficheiro por declarar da arvore de trabalho).
+.watcher-project.toml
