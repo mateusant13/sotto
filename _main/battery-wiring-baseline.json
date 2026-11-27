@@ -184,11 +184,6 @@
       "date": "2026-10-25"
     },
     {
-      "file": "log-rotation-oracle.py",
-      "reason": "REASON-MISSING preencher a mao",
-      "date": "2026-10-25"
-    },
-    {
       "file": "meter-chain-oracle.py",
       "reason": "REASON-MISSING preencher a mao",
       "date": "2026-10-25"

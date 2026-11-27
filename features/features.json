@@ -1349,7 +1349,8 @@
         "_main/zip-mockups/zip-C-panels.html",
         "_main/zip-mockups/zip-D-themes.html",
         "_main/zip-mockups/zip-E-panels.html",
-        "_main/zipc-designs-oracle.py"
+        "_main/zipc-designs-oracle.py",
+        "_main/qi-log-bound-oracle.py"
       ],
       "file_count": 1339,
       "recent_commit_touches": 385,

@@ -4044,6 +4044,28 @@ def _plp_guid_str(raw):
     )
 
 
+#: O REGISTO DO `QueryInterface` E' UM DIAGNOSTICO, NAO UM ARQUIVO (medido
+#: 2026-11-27). O MESMO IID chega a cada poll do player e a lista so' crescia
+#: dentro de um processo que vive com o audio do dono: guarda-se o CONJUNTO de
+#: interfaces perguntadas ate' este tecto, e o que fica de fora e' CONTADO.
+_PLP_QI_LOG_CAP = 64
+
+
+def _plp_qi_record(name, log):
+    """Uma entrada do registo do `QueryInterface`: 'new' | 'repeat' | 'dropped'.
+
+    A REGRA VIVE AQUI, e nao dentro da closure COM, para ela poder ser exercitada
+    sem WASAPI: o handler so' agrega os contadores. Devolver o veredicto em vez do
+    booleano de `in` e' o que deixa o chamador distinguir 'ja' perguntaram' (seen)
+    de 'o tecto cortou' (dropped) -- sem essa distincao um corte silencioso passaria
+    por repeticao (2026-11-27).
+    """
+    if name in log:
+        return 'repeat'
+    if len(log) < _PLP_QI_LOG_CAP:
+        log.append(name)
+        return 'new'
+    return 'dropped'
 _PLP_IID_HANDLER = None
 _PLP_IID_UNKNOWN = None
 _PLP_ACCEPT_IIDS = None
@@ -4136,6 +4158,8 @@ class _PlpCompletionHandler:
         self.error = None
         self.refs = 1
         self.qi_log = []
+        self.qi_log_seen = 0
+        self.qi_log_dropped = 0
         self._build(wl)
 
     def _build(self, wl):
@@ -4148,7 +4172,11 @@ class _PlpCompletionHandler:
         def qi(this, riid, ppv):
             try:
                 raw = ctypes.string_at(riid, 16) if riid else b""
-                self.qi_log.append(_plp_guid_str(raw))
+                _st = _plp_qi_record(_plp_guid_str(raw), self.qi_log)
+                if _st == 'repeat':
+                    self.qi_log_seen += 1
+                elif _st == 'dropped':
+                    self.qi_log_dropped += 1
                 if ppv:
                     ctypes.cast(ppv, ctypes.POINTER(ctypes.c_void_p))[0] = None
                 if raw in _plp_accepted_iids():
@@ -4260,7 +4288,10 @@ def _plp_activate(pid, mode=PLP_MODE_INCLUDE_TARGET_PROCESS_TREE,
             raise ProcessLoopbackError(
                 "ActivateCompleted never fired within %.1fs (the audio stack's MTA "
                 "thread did not call back; the handler answered QueryInterface for "
-                "%s)" % (timeout_s, ", ".join(handler.qi_log) or "nothing"))
+                "%s dropped=%d seen=%d)" % (timeout_s,
+                                            ", ".join(handler.qi_log) or "nothing",
+                                            handler.qi_log_dropped,
+                                            handler.qi_log_seen))
         if handler.error:
             raise ProcessLoopbackError("completion handler: %s" % handler.error)
         if handler.hr_activate != 0:

@@ -11952,8 +11952,17 @@ BOOTSTRAP_JS = r"""
     // O ASPECTO DA LEGENDA NATIVA (dono, 2026-11-09). `plate` escolhe a largura
     // da placa ('tight' | 'normal') e `opacity` o alfa dela (0..1). O shell
     // PRENDE o valor, grava em `_main/caption-settings.json` e aplica ao overlay
-    // vivo -- devolve o que ficou aplicado, que pode nao ser o pedido (o clamp
-    // vive num sitio so', no Python).
+    // vivo.
+    //
+    // A RESPOSTA ECOA O PEDIDO, NAO O APLICADO -- e isto esta' escrito porque a
+    // versao anterior prometia o contrario. O clamp vive num sitio so' (Python,
+    // `caption_settings.set_visual`) e o `post` daqui e' de mao unica: nao ha
+    // canal de volta neste membro, ao contrario de `getInfo`/`getStats`, que
+    // esperam por um id. Prometer o aplicado e' uma afirmacao que o codigo nao
+    // sustenta. O valor APLICADO le-se onde ele vive: o ficheiro acima e a linha
+    // `CAPTION_VISUAL plate=.. opacity=.. live=..` no log da shell. Nenhum
+    // chamador le esta resposta hoje (`panel.js:450` ignora-a) -- se um vier a
+    // ler, o caminho e' o id-round-trip, nao uma segunda copia do clamp aqui.
     setCaptionVisual: function (opts) {
       var payload = opts && typeof opts === 'object' ? opts : {};
       post('caption-visual', payload);

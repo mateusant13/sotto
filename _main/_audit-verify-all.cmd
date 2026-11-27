@@ -1579,6 +1579,35 @@ if exist _main\bridge-pump-fault-oracle.py (
 call :step red-as-expected-bridge-pump-fault 1 "_main\bridge-pump-fault-oracle.py;app\webview\sotto_webview.py" "%OUT%\bridge-pump-fault-neg.log" python _main\bridge-pump-fault-oracle.py --neg-arm
 call :expectred red-as-expected-bridge-pump-fault !STEP_RC! "%OUT%\bridge-pump-fault-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-bridge-pump-fault MISSING "%OUT%\bridge-pump-fault-neg.log" "NEG-ARM: PASS" )
+REM `log-rotation` -- UMA ROTACAO QUE NAO ACONTECE NAO PODE SER MUDA (medido 2026-11-27,
+REM triage row 1). O bloco do tecto de 64 MB tinha `except Exception: pass`: a falha nao
+REM aparecia em lado nenhum e o log continuava a crescer sobre o volume onde vivem os dados
+REM do dono -- o ficheiro que devia dizer por que o disco encheu e' o proprio que o encheu.
+REM Agora conta (`_LOG_ROTATE_FAILURES`) e escreve `LOG_ROTATE_FAILED` pelo handle que a app
+REM abre de qualquer maneira (pythonw nao tem stderr). O mutante `silent-except` E' o codigo
+REM do HEAD, portanto o braco vermelho e' a prova antes-da-correcao.
+if exist _main\log-rotation-oracle.py (
+call :step log-rotation 0 "_main\log-rotation-oracle.py;app\webview\sotto_webview.py" "%OUT%\log-rotation.log" python _main\log-rotation-oracle.py
+call :record log-rotation !STEP_RC!
+) else ( call :record log-rotation MISSING )
+if exist _main\log-rotation-oracle.py (
+call :step red-as-expected-log-rotation 1 "_main\log-rotation-oracle.py;app\webview\sotto_webview.py" "%OUT%\log-rotation-neg.log" python _main\log-rotation-oracle.py --neg-arm
+call :expectred red-as-expected-log-rotation !STEP_RC! "%OUT%\log-rotation-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-log-rotation MISSING "%OUT%\log-rotation-neg.log" "NEG-ARM: PASS" )
+REM `qi-log-bound` -- O REGISTO DO `QueryInterface` NAO PODE CRESCER SEM TECTO (medido
+REM 2026-11-27, triage row 10). O worker responde QI no caminho do loopback por processo e
+REM `qi_log.append(...)` corria a cada pergunta, com o MESMO IID de volta a cada poll do
+REM player, dentro de um worker que vive com o audio do dono. A regra passou a uma funcao
+REM pura (`_plp_qi_record`) que distingue 'ja perguntaram' de 'o tecto cortou'; o mutante
+REM sem tecto tem de cair.
+if exist _main\qi-log-bound-oracle.py (
+call :step qi-log-bound 0 "_main\qi-log-bound-oracle.py;worker\sotto_worker.py" "%OUT%\qi-log-bound.log" python _main\qi-log-bound-oracle.py
+call :record qi-log-bound !STEP_RC!
+) else ( call :record qi-log-bound MISSING )
+if exist _main\qi-log-bound-oracle.py (
+call :step red-as-expected-qi-log-bound 1 "_main\qi-log-bound-oracle.py;worker\sotto_worker.py" "%OUT%\qi-log-bound-neg.log" python _main\qi-log-bound-oracle.py --neg-arm
+call :expectred red-as-expected-qi-log-bound !STEP_RC! "%OUT%\qi-log-bound-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-qi-log-bound MISSING "%OUT%\qi-log-bound-neg.log" "NEG-ARM: PASS" )
 REM `log-mirror-bound` -- O ESPELHO DO LOG NAO PODE CRESCER SEM TECTO (medido
 REM 2026-11-27, audit #8a). `_LOG_QUEUE` era um `SimpleQueue()` sem limite, com um
 REM `put` por linha de log e contagem nenhuma: um produtor que fala depressa
@@ -1982,7 +2011,7 @@ REM startup refusal with CPU/unknown/provider-only census controls; it loads no
 REM punctuation weights. `--neg-arm` expects six regressions RED, including an
 REM inverted GPU-placement guard, and is itself checked below.
 if exist _main\punct-model-oracle.py (
- call :step punct-model 0 "_main\punct-model-oracle.py;worker\punctuation_model.py;worker\sotto_worker.py" "%OUT%\punct-model.log" python _main\punct-model-oracle.py
+ call :step punct-model 0 "_main\punct-model-oracle.py;worker\punctuation_model.py;worker\sotto_worker.py;app\webview\sotto_webview.py" "%OUT%\punct-model.log" python _main\punct-model-oracle.py
  call :record punct-model !STEP_RC!
 ) else ( call :record punct-model MISSING )
 if exist _main\punct-model-oracle.py (

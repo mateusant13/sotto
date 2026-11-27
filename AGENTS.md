@@ -906,14 +906,21 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-27, depois do par `stepcache-skip-record`):**
-  `_main\_audit-verify-all.cmd` = **467326 B**, **5315 CRLF** / 0 bare LF,
-  sha256 `76CB1704A2D6BD26DF42BE45B05A8170A339D309EADD3A8AE5751504A56E335F`.
+- **PIN do ficheiro (re-medido 2026-11-27, depois dos pares `log-rotation` e `qi-log-bound`):**
+  `_main\_audit-verify-all.cmd` = **469851 B**, **5344 CRLF** / 0 bare LF,
+  sha256 `84FEE14242615CD73F052E6C4B25A2CD653669C858F1003B3ED08E179D74EE45`.
   (Pares ligados ate' hoje: `youtube-sync` -- unico oraculo da familia sem
-  chamador -- e `stepcache-skip-record` -- um passo SKIP-SLOW era adiado sem
+  chamador --, `stepcache-skip-record` -- um passo SKIP-SLOW era adiado sem
   escrever custo nem razao, logo o ratchet lia um `elapsed_s` velho e um passo
-  de 154,9 s podia passar por rapido. O oraculo novo grava as duas coisas num
-  estado sintetico e a arm vermelha exige que a escrita falte.)
+  de 154,9 s podia passar por rapido --, `log-rotation` -- o `except Exception:
+  pass` do tecto de 64 MB deixava a rotacao falhar em silencio e o log crescer
+  sobre o volume do dono, e o oraculo nem devolvia codigo de saida: reescrito
+  com 3 arms e 2 mutantes, dos quais `silent-except` E' o codigo do HEAD -- e
+  `qi-log-bound` -- `qi_log.append` corria a cada `QueryInterface` num worker de
+  vida longa; a regra virou funcao pura e o mutante sem tecto tem de cair.)
+  O valor de `punct-model` passou a incluir `app\webview\sotto_webview.py` nas
+  dependencias: a arm F3 dele exercita o `_consume` REAL, logo um HIT sem o shell
+  na chave mediria codigo que a arm ja' nao le.)
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (O par de 2026-11-27 julga a TABELA DE ARTEFACTOS e o CENSO DE ORFAOS -- ver o recibo
   `_main/receipt-20261127-*`. O historico passo-a-passo de cada par vive em
