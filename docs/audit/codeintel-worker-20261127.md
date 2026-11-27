@@ -2,10 +2,23 @@
 
 - Source JSON: `I:/cc-tmp/ci-worker2.json`
 - Exact producer command: `py -3 -m codeintel full H:/sotto --scope worker --max-population-files 4000 --json` (rc 2, 82.27 s, 319 raw findings)
-- Scope: `H:/sotto/worker/**`. Dedupe key: `(file, line, class)` → 281 unique findings. Table below covers all 134 high + 97 medium = **231** rows (severity order: high first, then medium; within severity by file/line/class).
+- Scope: `H:/sotto/worker/**`. Dedupe key: `file,line,class` → 281 unique findings. The table below covers all 281 unique keys: 231 high/medium rows adjudicated in v1 + 50 info rows appended in this pass.
 - Line numbers are the pre-edit positions reported by the JSON (code read at `H:/sotto`, edits applied only in the isolated worktree).
 - EOL dialect: this artifact is written with **LF** bytes.
 - `beam-exploration` skill was not installed in this session; every row was adjudicated by reading the source directly.
+
+## Accounting (dedupe key `file,line,class`)
+
+| Quantity | Count | Basis |
+| --- | --- | --- |
+| raw findings | 319 | 138 high + 97 medium + 84 info |
+| unique keys (`file,line,class`) | 281 | 319 − 38 duplicate rows |
+| adjudicated before this pass | 231 rows | 235 raw high/medium; 4 raw rows are duplicate keys |
+| appended in this pass | 50 rows | 50 unique info keys (84 raw info findings) |
+| adjudicated after this pass | 281 rows | all unique keys; 0 unadjudicated |
+
+- Precision on **unique keys**: REAL / (REAL + NOISE) = 13 / (13 + 252) = 4.91%; denominator = 265 unique keys with a REAL or NOISE verdict (16 CANNOT-JUDGE keys excluded).
+- The 4 duplicate high/medium raw rows are 3 copies each of two keys already in the table: `worker/inspect_model.py:5:DEFAULT-PATH-DRIFT`, `worker/unified_asr.py:41:DEFAULT-PATH-DRIFT`; the other 34 duplicate rows are info repeats of the 50 appended keys.
 
 | file:line | class | verdict | one-line reason |
 | --- | --- | --- | --- |
@@ -240,14 +253,66 @@
 | `worker/speaker_sidecar.py:763` | RETURN-NONE-EXCEPT | NOISE | None is the documented unavailable/invalid-input fallback; handler validates the value |
 | `worker/wasapi_loopback.py:1567` | RETURN-NONE-EXCEPT | NOISE | None is the documented unavailable/invalid-input fallback; handler validates the value |
 | `worker/wasapi_loopback.py:1579` | RETURN-NONE-EXCEPT | NOISE | None is the documented unavailable/invalid-input fallback; handler validates the value |
+| `worker/_probe/diag.py:48` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/diag.py:48` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/diag.py:86` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/fp16_io.py:4` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/fp16_io.py:4` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/idle-cpu-parakeet.py:63` | HALLUCINATED-IMPORT | NOISE | `sys.path.insert(0, MODEL_DIR)` precedes `import transcribe`; runtime import root, not a missing module |
+| `worker/_probe/probe2.py:4` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe2.py:4` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe2.py:5` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe3.py:4` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe3.py:4` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe4.py:4` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe4.py:4` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe5.py:5` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe5.py:5` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe5.py:6` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe6.py:5` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe6.py:5` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe6.py:6` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_api.py:3` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_api.py:3` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe_enc.py:7` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_enc.py:7` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe_enc.py:16` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_genai.py:3` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_genai.py:3` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe_genai.py:4` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_graphs.py:5` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_graphs.py:5` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe_rnnt.py:10` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_rnnt.py:10` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe_rnnt.py:11` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_rnnt2.py:10` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_rnnt2.py:10` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/probe_rnnt2.py:42` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_vocab.py:3` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/probe_vocab.py:3` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/quant_cmp.py:16` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/quant_cmp.py:16` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/quant_cmp.py:17` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/quant_cmp.py:17` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/quant_cmp.py:18` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/variants.py:17` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/_probe/variants.py:17` | DEFAULT-PATH-DRIFT | NOISE | gitignored `worker/_probe/` diagnostic snapshot constant; hardcoded fixture path is probe-local |
+| `worker/_probe/variants.py:48` | ABSOLUTE-DEFAULT-PATH | NOISE | gitignored `worker/_probe/` one-off diagnostic; hardcoded snapshot fixture path has no product consumer |
+| `worker/audio_queue_consumer.py:179` | SILENT-TRUNCATION | NOISE | explicit `limit` from `--limit` CLI flag drives `queue[:limit]`; caller-requested cap |
+| `worker/inspect_model.py:5` | ABSOLUTE-DEFAULT-PATH | REAL | module-level absolute model default; target absent on this host |
+| `worker/redux_live.py:2838` | HALLUCINATED-IMPORT | NOISE | `sys.path.insert(0, MODEL_DIR)` precedes `import transcribe`; runtime import root, not a missing module |
+| `worker/unified_asr.py:41` | ABSOLUTE-DEFAULT-PATH | REAL | module-level `DEFAULT_MODEL` absolute NeMo path; target absent on this host |
+| `worker/wasapi_loopback.py:742` | SILENT-TRUNCATION | NOISE | `if len(current) > JOURNAL_MAX_ROWS` guard with declared cap constant bounds journal retention |
 
 ## Counts
 
-- adjudicated N: **231** (all high + all medium of the 281 deduped findings)
-- REAL: **11**
-- NOISE: **204**
+- adjudicated N: **281** (231 prior rows + 50 appended info rows; all unique keys under dedupe key `file,line,class`)
+- REAL: **13**
+- NOISE: **252**
 - CANNOT-JUDGE: **16**
+- unadjudicated: **0** unique keys (all 84 raw info findings are represented by the 50 appended rows; 4 duplicate high/medium raw rows were already represented)
 - fixed: **1** (only a REAL ≤3-line change with an obvious correct form)
+- precision on unique keys: **13 / (13 + 252) = 4.91%** (denominator 265 = REAL + NOISE unique keys; 16 CANNOT-JUDGE keys excluded)
 
 ## Code edit
 
@@ -275,7 +340,7 @@ Observed output: `PROOF: missing -> {} + err diagnostic; existing -> unchanged p
 ## Why the remaining REAL rows were not edited
 
 - 6 × `SUBPROCESS-NO-TIMEOUT`: no timeout ceiling is real, but no repo-derived timeout value exists; picking one would be a design change, not an obvious 1-line fix.
-- 2 × `SUBPROCESS-NO-CONSOLE` and 2 `DEFAULT-PATH-DRIFT`: vendored/ignored `worker/models/**` trees and host-specific defaults need a runtime-owned root or window policy; no safe ≤3-line form. `DEFAULT-PATH-DRIFT` also affects `worker/inspect_model.py` and `worker/unified_asr.py`, whose intended model locations are absent on this host.
+- 2 × `SUBPROCESS-NO-CONSOLE` and 2 `DEFAULT-PATH-DRIFT` (plus the same two lines reclassified as `ABSOLUTE-DEFAULT-PATH`): vendored/ignored `worker/models/**` trees and host-specific defaults need a runtime-owned root or window policy; no safe ≤3-line form. `DEFAULT-PATH-DRIFT` also affects `worker/inspect_model.py` and `worker/unified_asr.py`, whose intended model locations are absent on this host.
 
 ## CANNOT-JUDGE rows
 
