@@ -35,7 +35,6 @@ from __future__ import annotations
 import argparse
 import ctypes
 import ctypes.wintypes as wt
-import os
 import sys
 import time
 

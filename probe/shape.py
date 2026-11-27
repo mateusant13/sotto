@@ -1,5 +1,7 @@
 """Measure the REAL shape of the live session tree. No assumptions, no literals."""
-import os, sys, time, collections, json
+import os
+import time
+import collections
 
 ROOTS = {
     "NEW_MINIMAX": r"C:\Users\Administrador\.minimax\v2\sessions",

@@ -1353,7 +1353,6 @@ class WarmEngine:
         self._load_thread.start()
 
     def _load_worker(self):
-        t0 = self.clock()
         try:
             asr, ms = self.loader.load()
         except Exception as exc:  # noqa: BLE001 -- say the cause, do not die silently

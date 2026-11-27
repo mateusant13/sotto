@@ -69,16 +69,37 @@ BUILTINS = set(dir(builtins)) | {
     '__name__', '__file__', '__doc__', '__package__', '__spec__', '__debug__'}
 
 
+def _aug_targets(tree):
+    """Os `Name` que sao ALVO de `X op= Y` -- e `X op= Y` LE `X` primeiro.
+
+    MEDIDO 2026-11-27: `sotto_webview.py` fazia `cap_styles |= WS_EX_LAYERED`
+    com `cap_styles` nunca atribuido. O `ast.Name` de um `AugAssign` tem
+    `ctx=Store`, logo a regra "um Store em qualquer sitio define o nome" dava-o
+    como definido e este oraculo imprimia GREEN com o defeito la' dentro --
+    `ruff` (F821) apanhou-o. Um nome que so' aparece como alvo de `AugAssign`
+    e' um nome LIDO que nunca foi escrito.
+    """
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AugAssign):
+            for target in ast.walk(node.target):
+                if isinstance(target, ast.Name):
+                    found.add(id(target))
+    return found
+
+
 def defined_names(tree):
     """Todo nome que o ficheiro pode ter definido em QUALQUER escopo."""
     names = set()
+    aug = _aug_targets(tree)
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             for alias in node.names:
                 names.add((alias.asname or alias.name).split('.')[0])
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names.add(node.name)
-        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+        elif (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+                and id(node) not in aug):
             names.add(node.id)
         elif isinstance(node, ast.arg):
             names.add(node.arg)
@@ -226,6 +247,34 @@ def neg_arm():
         else:
             print('  FALHA a leitura escopada nao viu o modulo sem import')
             ok = False
+        # O TERCEIRO PAR, e o defeito REAL de 2026-11-27: `X op= Y` com `X`
+        # nunca escrito. Um Store dentro de um `AugAssign` nao define nada.
+        aug_bad = os.path.join(tmp, 'aug_bad.py')
+        with open(aug_bad, 'w', encoding='utf-8') as handle:
+            handle.write('def paint(styles):\n'
+                         '    cap_styles |= styles\n'
+                         '    return cap_styles\n')
+        aug_hits = undefined(aug_bad)
+        if 'cap_styles' in aug_hits:
+            print('  RED  %s op= com o nome nunca escrito -> acusado %r'
+                  % ('cap_styles', aug_hits))
+        else:
+            print('  FALHA o detector aceitou um %s op= sem atribuicao'
+                  % 'cap_styles')
+            ok = False
+        aug_ok = os.path.join(tmp, 'aug_ok.py')
+        with open(aug_ok, 'w', encoding='utf-8') as handle:
+            handle.write('def paint(styles):\n'
+                         '    cap_styles = 0\n'
+                         '    cap_styles |= styles\n'
+                         '    return cap_styles\n')
+        aug_quiet = undefined(aug_ok)
+        if aug_quiet:
+            print('  FALHA o detector acusou o par com atribuicao: %r'
+                  % (aug_quiet,))
+            ok = False
+        else:
+            print('  GREEN o par com atribuicao passa sem uma linha')
         pos = os.path.join(tmp, 'ok.py')
         with open(pos, 'w', encoding='utf-8') as handle:
             handle.write(POS_USER)

@@ -66,6 +66,10 @@ history/
 # nothing to do with the product -- and "a gate that is not in the battery
 # rots in silence" becomes "a gate whose fixture rots in silence".
 !_main/redux-live-smoke.jsonl
+# 2026-11-27: the Full SIM ledger is a VERSIONED artefact -- the pre-commit gate reads
+# it from the diff (`sim_updated_in_diff`), and `*.jsonl` above hid it, so the gate
+# could never be satisfied by the very update it requires.
+!revival/sim.jsonl
 !_main/_wordsplit-before.jsonl
 !_main/_wordsplit-after.jsonl
 

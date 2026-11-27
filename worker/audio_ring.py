@@ -61,7 +61,6 @@ de 2 325,2 s DENTRO de um ficheiro):
 """
 from __future__ import annotations
 
-import collections
 import json
 import os
 import queue

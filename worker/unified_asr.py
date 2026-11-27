@@ -244,7 +244,6 @@ class UnifiedAsr:
 
     # -- decode state ------------------------------------------------------
     def _new_state(self):
-        torch = self.torch
         g, state = self.model.decoder.predict(None, None, add_sos=True)
         g = self.model.joint.project_prednet(g.float())
         return g, state
@@ -279,7 +278,6 @@ class UnifiedAsr:
             torch.cuda.synchronize()
             torch.cuda.reset_peak_memory_stats()
         chunk_samples = self.chunk_f * SAMPLES_PER_ENCODER_FRAME
-        win = (self.left_f + self.chunk_f + self.right_f)
         prompt = torch.tensor([self.prompt_idx], dtype=torch.long, device=self.device)
         g, state = self._new_state()
         total = len(pcm)

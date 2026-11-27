@@ -293,6 +293,12 @@ def export(model, config, raw, vad_state, out: Path, reference_transcribe: Path 
         except Exception as exc:  # noqa: BLE001
             print("vad-model.onnx NOT exported: %s: %s" % (type(exc).__name__, exc))
 
+    # The exported dtype is read from the model, not from a CLI namespace that
+    # this function never receives (`args` was a NameError on every run).
+    try:
+        _w_dtype = str(next(model.parameters()).dtype).replace("torch.", "")
+    except (StopIteration, AttributeError):
+        _w_dtype = "unknown"
     meta = {
         "model_type": "nemo-conformer-tdt",
         "features_size": 128,
@@ -304,7 +310,7 @@ def export(model, config, raw, vad_state, out: Path, reference_transcribe: Path 
         "encoder_frame_seconds": 0.08,
         "sample_rate": 16000,
         "source": "moondream/parakeet-ultra",
-        "weights": "%s ONNX graph (worker/ultra_export.py)" % args.dtype,
+        "weights": "%s ONNX graph (worker/ultra_export.py)" % _w_dtype,
         "checkpoint_config": raw,
     }
     (out / "config.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

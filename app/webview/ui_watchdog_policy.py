@@ -189,7 +189,8 @@ def _selftest():
 
     # o observador esfomeado: a amostra nao vale e zera a sequencia
     s = State(3)
-    feed(s, 'strike'); feed(s, 'strike')
+    feed(s, 'strike')
+    feed(s, 'strike')
     kind = classify(0, 1460, 20.3, 11.0)
     act = feed(s, kind)
     say('laco de 20,3 s com orcamento de 11 s -> invalida',

@@ -111,7 +111,7 @@ from selftest_instrument import (  # noqa: F401 -- superficie historica do shell
 # `RECT`, `POINT` e `CURSORINFO` sao `ctypes.Structure` sem logica, e o ratchet
 # conta CLASSES por ficheiro: com a leitura de pointer lock o shell passou de 25
 # para 26 e o tecto nao se sobe -- extrai-se. Os nomes sao os MESMOS.
-from win32_types import CURSORINFO, POINT, RECT
+from win32_types import POINT, RECT
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -2652,12 +2652,12 @@ def _stamp() -> str:
 #: caminho que o dono usa (o painel, a legenda, o YouTube, o gesto).
 #: Os ficheiros que a etiqueta cobre vivem em `code_identity` (uma definicao so'); o shell
 #: re-exporta-os porque o `_main/live-code-freshness-oracle.py` os le' daqui.
-from code_identity import _CODE_ID_FILES, _CODE_ID_GLOBS  # noqa: F401
+from code_identity import _CODE_ID_FILES, _CODE_ID_GLOBS  # noqa: F401,E402
 # A LISTA E A MESMA QUE O PORTAO RECALCULA (2026-11-05): o shell re-exporta
 # `code_files`, e `_main/live-code-freshness-oracle.py` le daqui em vez de
 # manter uma segunda lista -- foi uma segunda lista que deixou
 # `youtube_cdp_source.py` fora da etiqueta.
-from code_identity import code_files  # noqa: F401
+from code_identity import code_files  # noqa: F401,E402
 
 
 def code_identity():
@@ -4962,7 +4962,8 @@ class ExternalCaptionWatcher(threading.Thread):
         self._yt_prof("source", _t_src)
         if source == 'external:youtube':
             if os.environ.get("SOTTO_YT_CPROFILE") == "1":
-                import cProfile, pstats
+                import cProfile
+                import pstats
                 _prof = cProfile.Profile()
                 _prof.enable()
             try:
@@ -7103,7 +7104,7 @@ class ExternalCaptionWatcher(threading.Thread):
         """
         lines_now = []
         try:
-            import youtube_window as _ytw
+            import youtube_window as _ytw  # noqa: F401 -- side effect: fail here, not mid-read
             lines_now = self._yt_rows(painted, hwnd, uia, UIA)
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
@@ -7226,7 +7227,7 @@ class ExternalCaptionWatcher(threading.Thread):
                 # coisas que ele fotografou. As linhas pintadas JA' SAO o texto do
                 # YouTube, uma por linha: saem inteiras, no instante em que mudam.
                 try:
-                    import youtube_window
+                    import youtube_window  # noqa: F401 -- side effect: fail here, not mid-read
                     lines = self._yt_rows(painted, hwnd, uia, UIA)
                 except Exception as exc:  # noqa: BLE001
                     log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
@@ -7285,7 +7286,7 @@ class ExternalCaptionWatcher(threading.Thread):
         esta' a desenhar. Nao se inventa, nao se atrasa: pinta-se.
         """
         try:
-            import youtube_window as _ytw
+            import youtube_window as _ytw  # noqa: F401 -- side effect: fail here, not mid-read
             lines_now = self._yt_rows(painted, hwnd, uia, UIA)
         except Exception as exc:  # noqa: BLE001
             log(f'YOUTUBE_PAINT_ROWS_FAILED error={exc!r}')
@@ -10991,7 +10992,7 @@ class TrayIcon:
         if not self.icon_path or not os.path.isfile(self.icon_path):
             self.warn(f'TRAY_ICON_MISSING path={self.icon_path}')
             return False
-        IMAGE_ICON, LR_LOADFROMFILE, LR_DEFAULTSIZE = 1, 0x0010, 0x0040
+        IMAGE_ICON, LR_LOADFROMFILE = 1, 0x0010
         handle = user32.LoadImageW(None, self.icon_path, IMAGE_ICON,
                                   16, 16, LR_LOADFROMFILE)
         if not handle:
@@ -11332,7 +11333,7 @@ class TrayIcon:
         old = self.menu
         self.menu = None
         try:
-            new = self._build_menu()
+            self._build_menu()   # _build_menu() assigns self.menu
         except Exception as exc:          # noqa: BLE001 -- um menu velho e' melhor que zero
             self.warn(f'TRAY_MENU_REBUILD_FAILED {type(exc).__name__}: {exc}')
             self.menu = old
@@ -13402,7 +13403,7 @@ class SottoHost:
             f' kind={"final" if _is_final else "partial"}'
             + (f' tap_reused=true queue_ms={queue_ms}'
                if _reused else '')
-            + (f' aged_kind=final-close' if _is_final
+            + (' aged_kind=final-close' if _is_final
                else f' aged_kind={"hold-expired" if (queue_ms is not None and shell.CAPTION_HOLD_BAND_MS[0] <= int(queue_ms) <= shell.CAPTION_HOLD_BAND_MS[1]) else "transport"}'
                if audio_ms is not None else '')
             + (f' audio_ms={audio_ms} queue_ms={queue_ms}'
@@ -14514,8 +14515,10 @@ class SottoShell:
                 if not h:
                     return None
                 try:
-                    c = _wt.FILETIME(); e = _wt.FILETIME()
-                    k = _wt.FILETIME(); u = _wt.FILETIME()
+                    c = _wt.FILETIME()
+                    e = _wt.FILETIME()
+                    k = _wt.FILETIME()
+                    u = _wt.FILETIME()
                     if not k32.GetThreadTimes(h, _ct.byref(c), _ct.byref(e),
                                               _ct.byref(k), _ct.byref(u)):
                         return None
@@ -15205,7 +15208,7 @@ class SottoShell:
             styles = WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT
             if str(os.environ.get('SOTTO_LAYERED') or '').strip().lower() \
                     in ('1', 'true', 'yes', 'on'):
-                cap_styles |= WS_EX_LAYERED
+                styles |= WS_EX_LAYERED
                 log('panel WS_EX_LAYERED kept by SOTTO_LAYERED=1 '
                     '(measured harmful: strip composites white)')
             set_ex_style(hwnd, add=styles)
@@ -22359,12 +22362,13 @@ class SottoShell:
         self._cost_streak = verdict['streak']
         if now - getattr(self, '_cost_logged_at', 0.0) >= self.COST_LOG_INTERVAL_S:
             self._cost_logged_at = now
-            seen = cost_watchdog.busy_rows(fields)
+            seen = cost_watchdog.busy_rows(fields)   # `so' para o log` (cost_watchdog)
             log('BRIDGE_WORKER_COST cpu_pct_avg=%s rows=%s rows_per_min=%s '
                      'cpu_s_per_row=%s chunks_since_tick=%s ms_per_chunk=%s '
                      'rtf=%s uptime_s=%s streak=%d decision=%s '
                      'pid=%s' % (
-                         fields.get('cpu_pct_avg', '-'), fields.get('rows', '-'),
+                         fields.get('cpu_pct_avg', '-'),
+                         '-' if seen['rows'] is None else seen['rows'],
                          fields.get('rows_per_min', '-'),
                          fields.get('cpu_s_per_row', '-'),
                          fields.get('chunks_since_tick', '-'),
@@ -26504,9 +26508,9 @@ class WorkerBridge:
                  f'captions={self.captions} statuses={self.statuses} '
                  f'malformed={self.malformed} '
                  f'stderr_tail={json.dumps(self.stderr_tail[-STDERR_TAIL_MAX:])}')
-        _exc = next((l.strip()[:200] for l in reversed(self.stderr_tail)
-                     if l[:1] not in (" ", "\t")
-                     and ("Error" in l or "Exception" in l)), None)
+        _exc = next((line.strip()[:200] for line in reversed(self.stderr_tail)
+                     if line[:1] not in (" ", "\t")
+                     and ("Error" in line or "Exception" in line)), None)
         if _exc:
             self.log(f'BRIDGE_DEATH_CAUSE {_exc}')
         self.child = None
@@ -27418,7 +27422,7 @@ class LoadSheddingMonitor(threading.Thread):
         `cpu_pct` viaja para `observe` (a razao publicada leva os DOIS numeros):
         um nivel disparado pela CPU tem de dizer a CPU que o disparou.
         """
-        module = load_shedding()
+        load_shedding()   # import on first use; keeps the module load inside the tick
         level, changed, why = self.state.observe(reading, cpu_pct=cpu_pct)
         if changed:
             self.log_fn('LOAD_SHEDDING level=%s commit_pct=%s cpu_pct=%s stopped=%s why=%s'
@@ -28340,7 +28344,7 @@ def main(argv=None):
     # sha256 exacto do codigo que carregou. `_main/live-code-freshness-oracle.py`
     # compara-o com o do disco e responde STALE/FRESH -- sem ele, a unica forma
     # de saber a idade do que o dono carrega e' comparar etiquetas de log a mao.
-    log(f'SHELL_CODE_ID %s' % code_identity())
+    log('SHELL_CODE_ID %s' % code_identity())
     args.python = args.python or default_python()
 
     # ── the three autostart modes print and exit: no window, no worker ───────

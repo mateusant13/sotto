@@ -1,7 +1,6 @@
 import onnxruntime_genai as og
 import onnxruntime as ort
 import os
-import gc
 
 model_dir = r'H:/sotto/worker/models/nemotron-3.5-asr-streaming-0.6b-int8'
 m = og.Model(model_dir)
@@ -33,9 +32,9 @@ def check_for_sessions(obj, name=''):
                     try:
                         attr_val = getattr(obj, attr_name)
                         check_for_sessions(attr_val, f'{name}.{attr_name}')
-                    except:
+                    except Exception:                         # noqa: BLE001
                         pass
-        except:
+        except Exception:                             # noqa: BLE001
             pass
 
 # Start with the model object
@@ -64,7 +63,7 @@ so = ort.SessionOptions()
 so.log_severity_level = 3
 try:
     so.intra_op_num_threads = int(os.environ.get('OMP_NUM_THREADS', '8'))
-except:
+except Exception:                                     # noqa: BLE001
     pass
 so.inter_op_num_threads = 1
 
@@ -111,7 +110,7 @@ else:
                     print(f'  {name} has same I/O as manual decoder')
                 if obj.get_inputs() == joint.get_inputs() and obj.get_outputs() == joint.get_outputs():
                     print(f'  {name} has same I/O as manual joint')
-        except:
+        except Exception:                                     # noqa: BLE001
             pass
 
 # Clean up

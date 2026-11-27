@@ -57,7 +57,7 @@ def _measure(text, px, cache, family='Segoe UI', weight=700, italic=False):
     """
     import clr
     clr.AddReference('System.Drawing')
-    from System.Drawing import Bitmap, Graphics, Font, FontStyle, GraphicsUnit
+    from System.Drawing import Bitmap, Graphics
     key = (str(family), int(weight), bool(italic), round(float(px), 2))
     hit = cache.get(key)
     if hit is None:
@@ -650,7 +650,8 @@ def _layout(text, previous, scale, work_width, theme=None, rows=None,
         prev_line = (_cw.wrap(previous, prev_w, int(budget * 0.8))[0][0]
                      if _cw else previous)
 
-    widest = max([cur_w(l) for l in cur_lines] + ([prev_w(prev_line)] if prev_line else [0]))
+    widest = max([cur_w(line) for line in cur_lines]
+                 + ([prev_w(prev_line)] if prev_line else [0]))
     max_text = max(1.0, work_width - g['x_text'] - g['pad_r'])
     # A CAIXA E' A PLACA. `tight` = LINHA medida + os dois `pad` do `_geom`;
     # `normal` (o de hoje) mantem o tecto de 240 px e a folga de 0,9 em que paga
@@ -835,7 +836,7 @@ def _clear_outer_ring(g, width, height, edge_px=None):
     `CompositingMode.SourceCopy` e' o que faz a diferenca -- com o `SourceOver`
     por omissao, pintar transparente sobre um pixel existente nao muda o alfa.
     """
-    from System.Drawing import Color, SolidBrush, Rectangle
+    from System.Drawing import Color, SolidBrush
     from System.Drawing.Drawing2D import CompositingMode
     if edge_px is None:
         edge_px = EDGE_PX
@@ -952,8 +953,7 @@ def _paint_bitmap(cur_lines, prev_line, width, height, scale, theme, alphas,
     """
     import clr
     clr.AddReference("System.Drawing")
-    from System.Drawing import (Bitmap, Graphics, Color, Font, FontStyle,
-                                GraphicsUnit, Pen, SolidBrush, RectangleF,
+    from System.Drawing import (Bitmap, Graphics, Color, Pen, SolidBrush, RectangleF,
                                 StringFormat, StringAlignment, StringFormatFlags)
     from System.Drawing.Imaging import PixelFormat
     from System.Drawing.Text import TextRenderingHint

@@ -29,7 +29,6 @@ continues: a missing microphone is not a dead product.
 
 from __future__ import annotations
 
-import collections
 import threading
 
 TARGET_SR = 16000

@@ -5,7 +5,6 @@ somewhere between interpreter start and the first print. This prints BEFORE and
 AFTER each import so the last line printed is the step that hung.
 """
 
-import sys
 import time
 
 t0 = time.time()

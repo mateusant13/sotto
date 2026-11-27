@@ -135,11 +135,30 @@ FAILED = [
 ]
 
 
+def existing_causes() -> set[str]:
+    """Idempotent: a cause already in the ledger is never re-recorded as round 1."""
+    r = subprocess.run([sys.executable, S, "--repo", REPO, "show", "--json"],
+                       capture_output=True, text=True, cwd=r"H:\sotto")
+    try:
+        import json
+        doc = json.loads(r.stdout)
+    except Exception:
+        return set()
+    return {e.get("root_cause_id") for e in doc.get("entries", [])}
+
+
 def main() -> int:
     bad = 0
+    have = existing_causes()
     for e in PASSED:
+        if e["cause"] in have:
+            print("SKIP", e["cause"], "(already in the ledger)")
+            continue
         bad += not record(passed=True, **e)
     for e in FAILED:
+        if e["cause"] in have:
+            print("SKIP", e["cause"], "(already in the ledger)")
+            continue
         u = e.pop("unresolved", None)
         bad += not record(passed=False, unresolved=u, **e)
     print("entries with a refusal:", bad)

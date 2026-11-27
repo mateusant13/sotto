@@ -187,7 +187,7 @@ class WNDCLASSEXW(ctypes.Structure):
 # continuam a existir para quem os le' de fora (a shell e os oraculos
 # `youtube-rows`/`caption-native-wrap`), por isso a lista abaixo e' a superficie
 # historica deste modulo e nao "imports por usar".
-from overlay_paint import (  # noqa: F401 -- superficie publica deste modulo
+from overlay_paint import (  # noqa: F401,E402 -- superficie publica deste modulo
     _MEASURE_CACHE, _THEME_DEFAULT, _case, _colour, _font_family, _geom,
     _layout, _luminance, _make_font, _measure, _measure_budget,
     _normalise_theme, _premultiplied_bitmap, _rgba, _same_line,

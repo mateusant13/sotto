@@ -1,9 +1,9 @@
 {
   "schema": "revival.features/v1",
   "repo": "sotto",
-  "git_head": "d77871d",
-  "generated_at": "2026-11-26T20:22:35Z",
-  "total_tracked_files": 3397,
+  "git_head": "13ef3df",
+  "generated_at": "2026-11-27T06:59:39Z",
+  "total_tracked_files": 3418,
   "feature_count": 15,
   "features": [
     {
@@ -878,6 +878,7 @@
         "_main/external-resume-latch-oracle.py",
         "_main/external-resume-oracle.py",
         "_main/external-subs-geometry-window-oracle.py",
+        "_main/feature-map-neg-arm.py",
         "_main/fetch-nemotron.py",
         "_main/fetch-parakeet.py",
         "_main/file-arm-ab.py",
@@ -1320,6 +1321,7 @@
         "_main/yt-loop-uia-oracle.py",
         "_main/yt-mirror-align-oracle.py",
         "_main/yt-no-dub-oracle.py",
+        "_main/yt-paint-metric.py",
         "_main/yt-pause-disagreement-oracle.py",
         "_main/yt-player-track-oracle.py",
         "_main/yt-player-track-probe.py",
@@ -1339,16 +1341,15 @@
         "_main/zip-mockups/zip-E-panels.html",
         "_main/zipc-designs-oracle.py"
       ],
-      "file_count": 1327,
-      "recent_commit_touches": 331,
+      "file_count": 1329,
+      "recent_commit_touches": 346,
       "recent_commit_subjects": [
-        "perf(sidecar): the diarizer window drops to the measured side of the cliff",
-        "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery",
-        "feat(audio): capture the microphone and transcribe both sides",
-        "fix(sidecar): open the endpoint the worker is transcribing",
-        "fix(battery): repair twelve rotted instruments and close the Codex handover",
-        "fix: the constant my trim deleted, and three controls that had stopped judging",
+        "perf(nemotron-oracle): split a 1.5 MB source once, not 12x (46.2s -> 3.0s CPU)",
+        "fix(gates): two false greens closed, ambient arm declared, dm-triage wired",
         "chore: drop two pasted oracle dumps from the repository root",
+        "ops: battery GREEN -- cheaper oracles, chrome and token removals",
+        "perf(sidecar): the diarizer window drops to the measured side of the cliff",
+        "fix(battery): repair twelve rotted instruments and close the Codex handover",
         "feat(engines): CUDA-only Redux/Ultra/speaker sessions and counted queue eviction"
       ],
       "how_it_works": "_main is the verification workshop rather than shipped runtime: `_main/_audit-verify-all.cmd` runs the aggregated battery and records each step's rc, while `_main/battery-budget-oracle.py` enforces the per-step ratchet against `_main/battery-budget-baseline.json` and `_main/tooling-intent-oracle.py` checks that new instruments declare the bug they serve. `_main/yt-capture-replay-oracle.py` and `_main/yt-headless-paint-oracle.py` replay real player and paint fixtures offline, and `_main/dead-unwired-oracle.py` keeps the known-unwired twins from silently becoming second owners. Step timings live in `_cache/battery-steps.json`; none of this opens the owner's app.",
@@ -1600,14 +1601,14 @@
         "app/panel/zip-overlay.css"
       ],
       "file_count": 119,
-      "recent_commit_touches": 26,
+      "recent_commit_touches": 25,
       "recent_commit_subjects": [
         "ops: battery GREEN -- cheaper oracles, chrome and token removals",
         "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery",
         "fix(live-caption): double-tap panel, instant blank, history rows, CDP-first tick",
         "feat(fusion): keep stream wording on unverified divergence, mark row for review"
       ],
-      "how_it_works": "`panel.html` is the page the live WebView2 shell loads byte-for-byte; `panel.js` is its controller, and `themes/themes.js` plus `skin-host.js` switch the `data-theme` attribute and frozen skins. `caption-float.js` owns an independent overlay with its own DOM, CSS and bridge feed, while `history-context-store.js` implements the shared `ctx1=` token codec. `history-store.js` is the Node twin of the Python history writer and is deliberately unwired from every page; `_main/panel-deps-oracle.py` checks that all assets named by the page exist.",
+      "how_it_works": "`panel.html` is the page the live WebView2 shell loads byte-for-byte; `panel.js` is its controller, and `app/panel/themes/themes.js` plus `skin-host.js` switch the `data-theme` attribute and frozen skins. `caption-float.js` owns an independent overlay with its own DOM, CSS and bridge feed, while `history-context-store.js` implements the shared `ctx1=` token codec. `history-store.js` is the Node twin of the Python history writer and is deliberately unwired from every page; `_main/panel-deps-oracle.py` checks that all assets named by the page exist.",
       "inputs": [
         "`window.sotto` bridge events and worker caption lines relayed by the shell",
         "Local theme CSS and bundled woff2 fonts",
@@ -1684,9 +1685,10 @@
         "app/shadowplay/tools/detectors.mjs"
       ],
       "file_count": 49,
-      "recent_commit_touches": 2,
+      "recent_commit_touches": 6,
       "recent_commit_subjects": [
         "shadowplay: compose-probe captures testsrc2, not the owner's desktop",
+        "fail-fast: add explicit spawn timeouts to the 21 JS call sites",
         "fix(shadowplay): classify a content-short replay refusal as still-desktop"
       ],
       "how_it_works": "`app/shadowplay/index.js` is the composition root: composeShadowplay wires HotkeyRouter, ReplayRing, ClipWriter, SavePath and NvencEncoder so a press can actually land a clip. `run-all.mjs` discovers every `*.test.mjs` plus `parse-gate.mjs`, requires a RESULT line from each suite and includes a `--red-arm` that must be refused. `e2e.test.mjs` drives barrel, hotkey, ring, writer and clock in a temp dir with a real ffmpeg-encoded clip, and `audio-mix.js` and `broadcast.js` cover the audio and stream sides.",
@@ -1717,14 +1719,14 @@
       "file_count": 3,
       "recent_commit_touches": 0,
       "recent_commit_subjects": [],
-      "how_it_works": "`app/verify/src/lib.rs` pulls in `../../src-tauri/src/geometry.rs` and `memory.rs` with `#[path]`, so the unit tests executed are the product's own assertions rather than copies. `rustc/tauri_stub.rs` and `rustc/fakeserde.rs` stand in for external crates; `Cargo.toml` and `README.md` document exactly what a green does and does not prove. Nothing here starts the app, opens a window or exercises the hotkey.",
+      "how_it_works": "`app/verify/src/lib.rs` pulls the tauri geometry and memory modules in with `#[path]` and `app/verify/rustc/tauri_stub.rs` plus `app/verify/rustc/fakeserde.rs` stand in for external crates. MEASURED 2026-11-27: the tauri sources are ABSENT from this repo (`git ls-files | grep src-tauri` is empty, no `src-tauri/` on disk), so the crate cannot compile today and the `#[path]` include is a named dead edge rather than a passing test. `verify-run.log` is the historical receipt, not a live verdict. Nothing here starts the app, opens a window or exercises the hotkey.",
       "inputs": [
-        "Real `src-tauri/src/geometry.rs` and `memory.rs` sources",
-        "rustc tauri and serde stubs in `app/verify/rustc/`"
+        "Tauri geometry/memory sources -- ABSENT since the Electron/Tauri retirement (`git ls-files` has no `src-tauri`)",
+        "Rustc tauri and serde stubs in `app/verify/rustc/`"
       ],
       "outputs": [
-        "Unit-test verdicts for dock arithmetic and PSAPI link",
-        "Receipt in `app/verify/verify-run.log`"
+        "Unit-test verdicts for dock arithmetic and PSAPI link -- CANNOT-MEASURE while the tauri sources are absent",
+        "Historical receipt in `app/verify/verify-run.log`"
       ],
       "interlinks": [],
       "verify_cmd": "cargo test --manifest-path app/verify/Cargo.toml",
@@ -1790,16 +1792,15 @@
         "app/webview/z_order.py"
       ],
       "file_count": 51,
-      "recent_commit_touches": 67,
+      "recent_commit_touches": 55,
       "recent_commit_subjects": [
         "fix(caption): budget the whole caption read, not only the UIA branch",
         "fix(caption): a parked CDP source is not a cooldown to expire",
         "fix(caption): the heartbeat writes its first tick before anything can stop it",
         "feat(caption): a third witness that tells a machine stall from our own GIL",
         "fix(caption): the reveal clock's 3 s hold is a named event, not a silent freeze",
-        "fix(perf): stop the YouTube probe pool and log storm; drop fsync from live panel state",
         "perf: stop re-reading an unchanged queue dir and stop repeating the same orphan line (8.2x on refresh)",
-        "shell: o objeto que a shell guarda responde, e uma morte de pythonw deixa recibo"
+        "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery"
       ],
       "how_it_works": "`app/webview/sotto_webview.py` is the live WebView2 shell: it hosts `panel.html` from app/panel unchanged and exposes the `window.sotto` bridge ported from the Electron preload. `youtube_cdp_source.py` supplies captions from the player CDP tree when UIA goes blank in a background tab, with `youtube_clock.py` and `youtube_monotonic.py` owning cue timing. `overlay_paint.py` holds the pure measurement, layout and bitmap half of the overlay paint while `caption_overlay.py` owns the on-screen window; `history_context.py` and the shell's history writer persist committed lines. `headless_paint.py` replays 745 real freeze samples off-screen for the paint budget.",
       "inputs": [
@@ -1867,7 +1868,7 @@
       "file_count": 4,
       "recent_commit_touches": 0,
       "recent_commit_subjects": [],
-      "how_it_works": "`discord/src/index.js` is the bot CLI: it takes `--guild` and `--channel`, reads `DISCORD_BOT_TOKEN` and calls `capture()` in `src/live.js`. `live.js` joins with `@discordjs/voice` and hands raw Opus packets to `receiver-core.js`, which maps SSRC to user and writes one continuous PCM file plus a packet JSONL per speaker with one decoder per stream. `harness/two-speakers.js` drives the same core synthetically, and `worker/discord_streams.py` is the alternate reader reachable from `run.cmd --worker`, not from the live shell.",
+      "how_it_works": "`discord/src/index.js` is the bot CLI: it takes `--guild` and `--channel`, reads `DISCORD_BOT_TOKEN` and calls `capture()` in `discord/src/live.js`. `live.js` joins with `@discordjs/voice` and hands raw Opus packets to `receiver-core.js`, which maps SSRC to user and writes one continuous PCM file plus a packet JSONL per speaker with one decoder per stream. `discord/harness/two-speakers.js` drives the same core synthetically, and `worker/discord_streams.py` is the alternate reader reachable from `run.cmd --worker`, not from the live shell.",
       "inputs": [
         "DISCORD_BOT_TOKEN plus guild and voice-channel ids",
         "Raw Opus packets tagged by SSRC from @discordjs/voice"
@@ -2060,14 +2061,13 @@
         "worker/wasapi_loopback.py"
       ],
       "file_count": 44,
-      "recent_commit_touches": 49,
+      "recent_commit_touches": 47,
       "recent_commit_subjects": [
-        "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery",
-        "feat(audio): capture the microphone and transcribe both sides",
-        "worker: reopen a tap whose meter is blind when the run already delivered",
-        "feat(cuda): CUDA-only ASR sessions over a shared ORT bootstrap",
         "fix: the constant my trim deleted, and three controls that had stopped judging",
+        "perf(sidecar): the cliff note keeps the measurement without the essay",
+        "perf(sidecar): the diarizer window drops to the measured side of the cliff",
         "fix(youtube): a stale photo and a disproved pause no longer blank the caption",
+        "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery",
         "feat(engines): CUDA-only Redux/Ultra/speaker sessions and counted queue eviction"
       ],
       "how_it_works": "`worker/sotto_worker.py` is the live ASR worker: sounddevice loopback capture into a ring, resample, ONNX streaming features, RNN-T decode, punctuation and prosody, and speaker sidecars, with one JSON object per flushed stdout line. `live_route.py` and `engine_switch.py` choose the engine, `audio_queue_consumer.py` drains the queue and `discord_streams.py` is the alternate reader reachable from `run.cmd --worker`. `_main/audio-recorder-oracle.py` and `_main/worker-churn-oracle.py` gate capture and shell-driven restarts.",

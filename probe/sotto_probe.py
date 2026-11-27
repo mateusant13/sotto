@@ -71,7 +71,6 @@ def q2_asr():
     sr = 16000
     wav = os.path.join(os.environ.get("TEMP", "H:\\Temp"), "sotto_probe.wav")
     try:
-        from pydub import AudioSegment  # optional, only to synthesise speech-ish audio
 
         raise RuntimeError("pydub path unused")
     except Exception:

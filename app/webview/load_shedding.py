@@ -1245,7 +1245,9 @@ def open_action(shell, monitor=None, log_fn=None, interval_s=SAMPLE_INTERVAL_S,
             pass
     live_fn = kwargs.pop('live_fn', None)
     if live_fn is None:
-        live_fn = (lambda: bool(getattr(shell, '_caption_wanted', True)))
+        def _default_live():
+            return bool(getattr(shell, '_caption_wanted', True))
+        live_fn = _default_live
     publish = getattr(monitor, '_publish', None) if monitor is not None else None
     action = LoadAction(state=state, publish=publish, log_fn=log, armed=armed,
                         live_fn=live_fn, view=view, **kwargs)

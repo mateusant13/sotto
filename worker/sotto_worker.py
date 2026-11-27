@@ -62,7 +62,6 @@ import math
 import os
 import queue
 import sys
-import tempfile
 import threading
 import time
 
@@ -3945,7 +3944,7 @@ PLP_SRC_DEFAULT_QUALITY = 0x08000000   # AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY
 # `ctypes` at import time was a NameError -- measured, `import sotto_worker` died
 # at this line with "name 'ctypes' is not defined", which py_compile cannot see and
 # which would have killed every launch of the app.
-import ctypes
+import ctypes  # noqa: E402 -- deliberate: the ctypes Win32 block lives here, documented above
 _PLP_DWORD = ctypes.c_ulong
 _PLP_WORD = ctypes.c_ushort
 _PLP_ULONG = ctypes.c_ulong
@@ -4634,7 +4633,6 @@ class ProcessLoopbackTap:
             pass
 
     def _open(self):
-        wl = self._wl
         # A pid that does not exist can only ever produce digital silence, so it
         # is refused HERE, loudly, instead of after a six-second zero window that
         # the ladder would read as a silent device. 'denied' is NOT refused: a
@@ -8021,14 +8019,6 @@ def main():
         # stop decoding, so the held line is closed before the batch window opens.
         "redux-batch-enter": 0,
     }
-    seg_stats = {
-        "max": 0,
-        "prunes": 0,
-        "pruned_total": 0,
-        "held_after_last": 0,
-        "events": [],
-    }
-
     # Live-branch automatic gain (see AutoGain). `SOTTO_AGC=0` disables it — the
     # CONTROL arm for measuring the gain's effect: the SAME source, no gain.
     # MEASURED 2026-10-06 (this lane): a quiet-but-SPEECH source at tap peak

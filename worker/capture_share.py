@@ -405,7 +405,8 @@ def connect_client(port=None, timeout=TIMEOUT_S, log=print, env=None):
         return None
     chosen_port = port_from_env(env) if port is None else int(port)
     deadline = time.monotonic() + float(timeout)
-    left = lambda: max(0.01, deadline - time.monotonic())
+    def left():
+        return max(0.01, deadline - time.monotonic())
     try:
         sock = socket.create_connection((HOST, chosen_port), timeout=left())
     except OSError as exc:

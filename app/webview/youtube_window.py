@@ -34,8 +34,6 @@ ULTIMAS que comecaram.
 """
 from __future__ import annotations
 
-import re
-
 #: As linhas que o YouTube desenha ao mesmo tempo. Vem de `rcRows` no payload; o
 #: numero fica aqui como DEFAULT porque um payload sem `wpWinPositions` nao pode
 #: deixar a legenda sem janela.

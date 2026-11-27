@@ -1011,7 +1011,7 @@ class BatchExecutor(threading.Thread):
                 state, detail = self.step()
             except Exception as exc:                             # noqa: BLE001
                 self.log(f'BATCH_EXEC_ERROR error={exc!r}')
-                state, detail = 'idle', 'error'
+                state = 'idle'
             # O ORCAMENTO MANDA ENTRE BLOCOS: o custo medido do bloco que
             # acabou de sair e' o periodo que o proximo vai ter de esperar.
             if state in ('done', 'failed'):
@@ -1232,7 +1232,7 @@ def transcribe_payload(path, rate=RATE, window_s=15.0, gap_s=0.6,
                 line['id'] = entry_id
             lines.append(line)
             print(json.dumps(line, ensure_ascii=False), flush=True)
-    result = {'type': 'result', 'text': ' '.join(l['text'] for l in lines),
+    result = {'type': 'result', 'text': ' '.join(line['text'] for line in lines),
               'segments': len(lines), 'rate': rate,
               'samples': int(pcm.size), 'path': os.path.abspath(path)}
     if entry_id is not None:

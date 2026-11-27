@@ -1,6 +1,9 @@
 """What IS a lane in the new tree? Basename distribution per depth, and the
 within-horizon set. Decides option (a) vs (b) on measurement, not assumption."""
-import os, time, collections, datetime
+import os
+import time
+import collections
+import datetime
 
 NEW = r"C:\Users\Administrador\.minimax\v2\sessions"
 HORIZON = 3600.0
@@ -53,7 +56,7 @@ for d in sorted(names_by_depth):
     print(f"  DEPTH {d}: {dict(names_by_depth[d].most_common(12))}")
 
 print()
-print(f"=== CONTENT CENSUS DIRECTLY INSIDE DEPTH-4 SESSION DIRS (top 20)")
+print("=== CONTENT CENSUS DIRECTLY INSIDE DEPTH-4 SESSION DIRS (top 20)")
 for k, v in session_dir_filecensus.most_common(20):
     print(f"  {v:6d}  {k}")
 

@@ -115,7 +115,6 @@ class TopmostKeepalive(object):
             self._log('TOPMOST_EXTRA_FAILED error=%r' % (exc,))
 
     def run(self):  # pragma: no cover -- o portao chama `tick()` em vez disto
-        import threading
         while not self._stop():
             try:
                 self.tick()
