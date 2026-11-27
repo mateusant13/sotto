@@ -40,6 +40,7 @@ import ast
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import re
 import shutil
@@ -364,8 +365,56 @@ def arms() -> None:
         "F1 o worker publica o estado no status que a shell loga")
     add("if punct:" in shell_src and "self.log(punct)" in shell_src,
         "F2 a shell ESCREVE a linha (nao a deixa no stderr)")
+    real_ok, real_why = _punct_through_consume()
+    add(real_ok,
+        "F3 a linha SAI do `_consume` real (a fonte pode conter o texto e o "
+        "caminho estar morto)", real_why)
 
     results.extend(placement_controls())
+
+
+def _punct_through_consume(path=None):
+    """O CAMINHO REAL: uma linha de status JSONL entra em `WorkerBridge._consume`
+    e a linha da pontuacao tem de sair no log da shell.
+
+    As arms F1/F2 comparavam SUBSTRINGS da fonte, e isso e' theatre: mover o
+    `self.log(punct)` para uma funcao que ninguem chama, ou renomear `if punct:`,
+    deixava as duas verdes. MEDIDO 2026-11-27 (`phase3-fixlist.md:7743`).
+    Esta arm constroi o `WorkerBridge` DE VERDADE (o `__init__` so' monta
+    estado -- nao larga processo, nao abre dispositivo) e alimenta-o com a
+    linha que o worker publica em `stage=providers`.
+
+    `path` existe para o `--neg-arm`: um mutante e' uma COPIA do shell, com os
+    irmaos (`hot_reload`, `prose_punct`, ...) lidos do diretorio real.
+    """
+    shell = Path(path) if path else (ROOT / 'app' / 'webview' / 'sotto_webview.py')
+    sys.path.insert(0, str(ROOT / 'app' / 'webview'))
+    spec = importlib.util.spec_from_file_location('sw_punct_consume_%d' % id(shell), shell)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as exc:  # noqa: BLE001
+        return False, 'the shell did not import: %r' % (exc,)
+    seen = []
+    try:
+        bridge = mod.WorkerBridge(command=sys.executable, worker_path='',
+                                  log=seen.append)
+    except Exception as exc:  # noqa: BLE001
+        return False, 'the real WorkerBridge could not be built: %r' % (exc,)
+    want = 'PUNCT_MODEL punctuation=on'
+    line = json.dumps({'type': 'status', 'state': 'boot', 'stage': 'providers',
+                       'punct_model': want,
+                       'providers_selected': ['CPUExecutionProvider'],
+                       'providers_available': ['CPUExecutionProvider'],
+                       'worker_pid': 123})
+    try:
+        bridge._consume(line, None)
+    except Exception as exc:  # noqa: BLE001
+        return False, 'the real consume raised on a status line: %r' % (exc,)
+    if want not in seen:
+        return False, ('the punct line never reached the shell log; the shell '
+                       'logged %d line(s): %r' % (len(seen), seen[:4]))
+    return True, 'logged verbatim by the real consume'
 
 
 def _mutate(target: Path, pairs) -> list[str]:
@@ -432,6 +481,31 @@ def neg_arm() -> int:
                 failures += 1
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+    # F3 -- o caminho REAL do consume, mutado numa COPIA do shell. E' o
+    # mutante que as arms de substring nao podiam apanhar: o texto continua na
+    # fonte, o `self.log(punct)` e' que sai do caminho.
+    shell = ROOT / "app" / "webview" / "sotto_webview.py"
+    tmp_shell = Path(tempfile.mkdtemp(prefix="punct-neg-shell-"))
+    try:
+        text = shell.read_text(encoding="utf-8")
+        old = ("                if punct:\n"
+               "                    self.log(punct)\n")
+        if text.count(old) != 1:
+            print("NEG-ARM shell-consume: nao consegui mutar (anchor count=%d)"
+                  % text.count(old))
+            failures += 1
+        else:
+            mut = tmp_shell / "sw_mut_shell.py"
+            mut.write_text(text.replace(old, "", 1), encoding="utf-8")
+            ok, why = _punct_through_consume(mut)
+            if ok:
+                print("NEG-ARM shell-consume FAIL -- o oraculo ficou VERDE sem a "
+                      "linha da pontuacao (" + str(why) + ")")
+                failures += 1
+            else:
+                print("NEG-ARM shell-consume PASS -- RED as designed (F3): " + str(why))
+    finally:
+        shutil.rmtree(tmp_shell, ignore_errors=True)
     source = (WORKER / "punctuation_model.py").read_text(encoding="utf-8")
     module_muts = [
         ("model-presence", "D1", "        if d is None:\n", "        if False:\n",

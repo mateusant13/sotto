@@ -2401,6 +2401,10 @@ _LOG_WRITER = None     # the ONE thread that owns the file
 #: A fila do espelho do --log e' LIMITADA e CONTA o que teve de largar (Lei 9).
 _LOG_CAP = 4096
 _LOG_DROPPED = 0
+#: how many times the rotation at the cap FAILED. A failure is counted because a
+#: log that cannot rotate keeps growing past its cap, and the only thing worse
+#: than that is a log that grows with nothing on disk saying so (2026-11-27).
+_LOG_ROTATE_FAILURES = 0
 #: O CANO NAO PARA O FIO QUE O ESCREVE (2026-11-09). Medido no log do dono,
 #: 15:44:36: `BRIDGE_SILENT` matou um worker cujo `WORKER_ALIVE ... age_ms=39657`
 #: chegou 17 ms depois -- o batimento estava PRESO no cano, nao ausente, e o
@@ -2479,7 +2483,7 @@ def _enqueue_log(line):
 
 
 def _open_log(path):
-    global _LOG_FILE, _LOG_QUEUE, _LOG_WRITER
+    global _LOG_FILE, _LOG_QUEUE, _LOG_WRITER, _LOG_ROTATE_FAILURES
     if path:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         # THE LOG GREW WITHOUT BOUND. MEASURED 2026-10-13: _main/webview-run.log reached
@@ -2503,6 +2507,13 @@ def _open_log(path):
         #
         # A failure here is swallowed on purpose -- a log that cannot be rotated must never
         # stop the app from starting, and the append below still works either way.
+        # WHAT IT MAY NOT DO IS STAY SILENT: swallowed, this is the 727.5 MB log growing
+        # past its own cap with nothing on disk naming the failure -- the volume fills
+        # and the instrument that would say why is the file that ate the disk. So the
+        # failure is COUNTED and the marker is written by the handle opened below
+        # (pythonw has no stderr to carry it) (2026-11-27).
+        rotate_failed = None
+        cap_mb = size = None
         try:
             cap_mb = int(os.environ.get('SOTTO_LOG_CAP_MB', '64'))
             keep_mb = int(os.environ.get('SOTTO_LOG_KEEP_MB', '16'))
@@ -2523,9 +2534,18 @@ def _open_log(path):
                 with open(path, 'a', encoding='utf-8') as fh:
                     fh.write('sotto: LOG_ROTATED from=%d B kept=%d B cap=%d MB\n'
                              % (size, len(tail), cap_mb))
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 -- counted below, never fatal
+            rotate_failed = exc
         _LOG_FILE = open(path, 'a', encoding='utf-8', buffering=1)
+        if rotate_failed is not None:
+            _LOG_ROTATE_FAILURES += 1
+            try:
+                _LOG_FILE.write(
+                    'sotto: LOG_ROTATE_FAILED error=%r size=%s cap_mb=%s'
+                    ' -- the log KEEPS GROWING past the cap\n'
+                    % (rotate_failed, size, cap_mb))
+            except Exception:
+                pass
         # THE FROZEN MIRROR GETS ITS OWN THREAD -- this is the freeze fix.
         # `log()` used to write AND flush the file inline, on whatever thread
         # called it. For the WH_MOUSE_LL click hook that thread is WINDOWS' OWN
