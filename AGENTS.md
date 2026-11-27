@@ -1029,6 +1029,32 @@ um **TAB**; um blob binario publica `i/-text` e nao conta como divergente.
 stutter "resolvido" sem pid, fio e linha nao e' um stutter resolvido. Recibo de referencia:
 `_main/receipt-20261108-stutter-caption-tick.md`.
 
+## `step_s=1.00` JA' DIZ "VIDEO PAUSADO", E CONFUNDI-LO COM CONGELAMENTO CUSTA UMA SESSAO (medido 2026-11-27)
+
+Auditando a sessao do dono de 11:45-13:36 (`_main/webview-run.log`, pid 57008) o
+laco aparece 39 minutos a `YOUTUBE_LOOP_HZ hz=1.0` com `step_s=1.00` contra
+`interval_s=0.10`, e isso LE como congelamento. Nao e'.
+
+- **2026-11-27 · `poll_step` devolve `1,00 s` por UM caminho so'.** `PAUSED_INTERVAL_S=0,50`
+  e `STALE_INTERVAL_S=1,00`; a escada so' chega ao `1,00` no ramo `if paused: return
+  STALE_INTERVAL_S if stale else PAUSED_INTERVAL_S`. Logo `step_s=1.00` e' a
+  CONJUNCAO "video pausado E cues paradas" -- o regime certo, nao um laco empurrado.
+  Um laco empurrado tem outra assinatura: `hz` baixo com `step_s` igual ao
+  `interval_s` (foi o caso de 2026-11-26, `hz=0.1..1.5` com leitura de 16 437 ms).
+- **A cadeia medida nesta sessao, e o que cada numero e':** `11:46:42`
+  `YOUTUBE_TRACK_READY state=has-track cues=667`; `11:46:44.747`
+  `CAPTION_WINDOW_BLANKED reason=youtube-paused-or-ended` (84 s de ecra vazio com a
+  faixa CHEIA -- o `yt_source_paused` cru, defeito ja' curado); `11:48:08.370`
+  `YOUTUBE_PAUSE_RESUMED pause_s=90.4` e a pintura volta **40 ms depois**; 10,4 s de
+  pintura limpa (`CAPTION_PAINT_SURFACE` a cada 0,1-0,9 s, 78 linhas) ate' ele
+  proprio desligar com `Ctrl+Space` as `11:48:19.089` (`LIVE_ENABLED on=false
+  wanted=false`); religa as `12:57:22.317` com `on=true wanted=true` e o video
+  PAUSADO, e e' por isso que nao ha' pintura ate' ao release das 13:36.
+- **A consequencia para qualquer auditoria futura:** antes de chamar "congelamento"
+  a um silencio de pintura, leia `step_s`, `YOUTUBE_POLL_PACED` e
+  `CAPTION_WINDOW_BLANKED reason=`. `LIVE_ENABLED on=false` e' o INTERRUPTOR do dono
+  (ordem de 2026-11-08: legenda desligada nao e' modelo desligado) e nao se "cura".
+
 ## UMA GUARDA QUE EXISTE NUMA PORTA E FALTA NA VIZINHA E' MEIA GUARDA (medido 2026-11-27)
 
 O log do dono (`_main/webview-run.log`, sessao 11:45:10) tem, no arranque, **CINCO**
