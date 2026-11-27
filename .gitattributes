@@ -84,6 +84,11 @@ _main/focus-title-oracle.json                              text eol=lf
 _main/tooling-intent-baseline.json                         text eol=lf
 _main/tree-cost-baseline.json                              text eol=lf
 _main/*.jsonl                                              text eol=crlf
+# `revival/sim.jsonl` e reescrito inteiro pelo `sim_memory.py` (skill project-revival)
+# com `Path.write_text`, que no Windows traduz para CRLF: index LF, checkout CRLF, como
+# os JSONL de `_main/`. Sem esta regra o `gitattributes-verify` acusa DIVERGE depois de
+# cada `observe` (medido 2026-11-27).
+revival/*.jsonl                                            text eol=crlf
 _main/*.log                                                text eol=lf
 _main/*.md                                                 text eol=lf
 _main/AGENTS-AUDIT.md                                      text eol=crlf
