@@ -24,9 +24,12 @@ O QUE ESTE ORACULO EXECUTA (o modulo REAL, sem dispositivo, sem parakeet):
   A7  um payload que chega (nome novo no directorio) faz a lista de orfaos cair
       a zero -- a guarda nao pode esconder a chegada do audio.
 
-BRACO NEGATIVO (`--neg-arm`): M1 desarma a guarda da LISTA DE NOMES numa COPIA
-do modulo -> A2 RED; M2 desarma a dedupe da linha -> A4 RED. Devolve 1 quando
-APANHA os dois (a convencao da casa: `:expectred ... 1`).
+BRACO NEGATIVO (`--neg-arm`): tres mutantes numa COPIA do modulo -- M1 desarma
+a guarda da LISTA DE NOMES -> A2 RED; M2 desarma a dedupe da linha -> A4 RED;
+M3 volta a guarda historica, que nao ve' a chegada de um payload -> A7 RED.
+Devolve 1 quando APANHA os tres (a convencao da casa: `:expectred ... 1`).
+O M3 existe porque o A7 era uma tautologia (`... is False or True`) ate'
+2026-11-27: um braco que nao podia ficar vermelho, a afirmar o mesmo que o A7-bis.
 
 USO
     python _main/batch-queue-scan-oracle.py [--neg-arm]
