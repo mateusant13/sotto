@@ -110,12 +110,23 @@ def arms(path=MODULE):
         q.refresh(force=True)
         add(q.scan_skips == skips and q.scans >= 4,
             'A6 `force=True` le sempre', 'scans=%r skips=%r' % (q.scans, q.scan_skips))
-        # um payload que chega e' um NOME novo no directorio: a guarda tem de ceder
+        # um payload que chega e' um NOME novo no directorio: a guarda tem de ceder.
+        # A TESTEMUNHA E' A LEITURA, NAO O CONTEUDO (medido 2026-11-27). Este braco
+        # dizia `all(...) is False or True`, uma tautologia: nunca podia ficar
+        # vermelho, e a sua afirmacao era a MESMA do A7-bis. A afirmacao propria
+        # deste braco e' "a guarda nao esconde a chegada" -- e o que a mede e' o
+        # contador de leituras. `batch_queue.py:280-284` regista porque: a guarda
+        # por `st_mtime_ns` FALHOU aqui (NTFS actualiza o carimbo do directorio de
+        # forma preguicosa; a leitura seguinte disse `scans=1` e o bloco novo ficou
+        # escondido). Uma linha que olhasse so' o conteudo passaria com essa guarda
+        # de volta; esta olha o contador, e o mutante M3 e' exactamente essa guarda.
+        scans_before_payload = q.scans
         with io.open(os.path.join(tmp, '0001-1-1.f32'), 'wb') as h:
             h.write(b'\x00' * 8)
         got = q.refresh()
-        add(all(e['id'] != '0001-1-1' for e in got) is False or True,
-            'A7 (registro) a chegada do payload nao e escondida')
+        add(q.scans == scans_before_payload + 1,
+            'A7 a chegada do payload NAO e escondida pela guarda',
+            'scans %r -> %r' % (scans_before_payload, q.scans))
         ids = [e['id'] for e in got]
         add('0001-1-1' in ids,
             'A7-bis o bloco cujo payload chegou ENTRA na fila',
@@ -130,15 +141,23 @@ def neg_arm():
                      '            if False:', 1)
     m2 = src.replace('if orphans and orphans != getattr(self, \'_orphans_logged\', 0):',
                      'if orphans:', 1)
-    if m1 == src or m2 == src:
+    # M3 e' a guarda HISTORICA, a que ja' esteve no produto: um carimbo que nao ve'
+    # a chegada de um payload. E' o que o A7 mede pelo contador de leituras -- com
+    # o mutante aplicado, o `.f32` entra no directorio e o `refresh()` seguinte
+    # responde `scan_skips` em vez de ler, ou seja o bloco novo fica escondido.
+    m3 = src.replace('            stamp = tuple(names)',
+                     "            stamp = tuple(n for n in names if n.endswith('.json'))", 1)
+    mutants = (('M1 a guarda da lista de nomes desarmada', m1, 'A2'),
+               ('M2 a dedupe da linha desarmada', m2, 'A4'),
+               ('M3 a guarda deixa de ver o payload que chega', m3, 'A7'))
+    if any(text == src for _title, text, _want in mutants):
         print('NEG-ARM IMPOSSIVEL -- um mutante nao foi encontrado no ficheiro')
         return 0
     tmp = tempfile.mkdtemp(prefix='scan-neg-')
     path = os.path.join(tmp, 'batch_queue.py')
     caught = 0
     try:
-        for title, text, want in (('M1 a guarda da lista de nomes desarmada', m1, 'A2'),
-                                  ('M2 a dedupe da linha desarmada', m2, 'A4')):
+        for title, text, want in mutants:
             io.open(path, 'w', encoding='utf-8', newline='\n').write(text)
             ROWS.clear()
             print('=== NEG-ARM: %s numa COPIA' % title)
@@ -148,9 +167,9 @@ def neg_arm():
             print('NEG-ARM %s %s -- %d arm(s) RED, %s entre elas=%s'
                   % (title.split()[0], 'PASS' if hit else 'FAIL', len(red), want, hit))
             caught += 1 if hit else 0
-        print('NEG-ARM %s -- %d/2 mutantes apanhados'
-              % ('PASS' if caught == 2 else 'FAIL', caught))
-        return 1 if caught == 2 else 0
+        print('NEG-ARM %s -- %d/%d mutantes apanhados'
+              % ('PASS' if caught == len(mutants) else 'FAIL', caught, len(mutants)))
+        return 1 if caught == len(mutants) else 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

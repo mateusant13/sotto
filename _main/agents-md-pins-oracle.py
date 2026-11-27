@@ -175,7 +175,13 @@ def main(argv=None):
     if args.neg_arm:
         say("CONTROL: %d failure(s) on the mutated copy (must be > 0)" % len(failures))
         print("AGENTS-PINS CONTROL " + ("PASS" if failures else "FAIL -- the gate cannot say NO"))
-        return 0 if failures else 4
+        # A CONVENCAO DA CASA: o negativo devolve **1 quando APANHA**. Este braco
+        # devolvia `0` ao apanhar, e o `.cmd` nao tinha passo nenhum para ele -- o
+        # controlo nunca corria na bateria. Medido 2026-11-27: `grep -c
+        # agents-md-pins _main/_audit-verify-all.cmd` dava 4 linhas, todas `:step`
+        # e `:record`, nenhuma `:expectred`. Um controlo que nunca corre nao e' um
+        # controlo: e' prosa. O `:expectred` do par exige rc=1 E a frase "PASS".
+        return 1 if failures else 4
     for row in failures:
         say("FAIL " + row)
     verdict = "PASS" if not failures else "FAIL"

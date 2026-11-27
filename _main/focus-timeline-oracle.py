@@ -846,7 +846,13 @@ def main(argv=None):
         json.dump(rep, f, ensure_ascii=False, indent=2)
     with open(a.report.replace(".json", ".txt"), "w", encoding="utf-8", newline="\n") as f:
         f.write(txt + "\n")
-    return 0
+    # O rc E' O VEREDITO. Este `return 0` incondicional imprimia `VERDICT: RED` e
+    # devolvia 0 ao mesmo tempo (medido 2026-11-27, `main()` terminava em `:849`).
+    # Qualquer consumidor que leia o rc -- a bateria, um chamador, um censo -- via
+    # VERDE num oraculo que acabou de dizer RED: e' o verde silencioso que a lei do
+    # repo proibe ("um passo saltado nao e' um portao que passou", e um RED com rc 0
+    # e' pior que um skip).
+    return 0 if n_ok == len(gates) else 1
 
 
 if __name__ == "__main__":
