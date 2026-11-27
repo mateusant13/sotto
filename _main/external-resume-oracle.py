@@ -238,6 +238,23 @@ def arms(mod, text):
                 and getattr(s, '_engine_park', 'x') is None,
                 {'second_ret': again, 'parks': s.parks,
                  'park': s._engine_park}))
+
+    # E19 -- QUEM MANDA E' O INTERRUPTOR DO DONO, NAO O PIXEL TRANSITORIO
+    # (fixlist class f, `sotto_webview.py:21381`). Um blank apagou `_caption_window_shown`
+    # com a legenda ainda QUERIDA: o motor ficou estacionado ate' ao reinicio.
+    seen[:] = []
+    s = _stub(mod, visible=False, engine_park='vram')
+    s._vram_parked = True
+    s._caption_wanted = True
+    s._caption_window_shown = False
+    r = resume(s, 2826.0)
+    out.append(('E19 legenda QUERIDA com pixel apagado levanta o motor',
+                r is True and s.parks == [None]
+                and getattr(s, '_engine_park', 'x') is None
+                and s._vram_parked is False,
+                {'ret': r, 'parks': s.parks, 'park': s._engine_park,
+                 'wanted': s._caption_wanted, 'shown': s._caption_window_shown}))
+
     # E14-E16 -- A ESTEIRA DO PARQUE (medida 2026-11-05 18:46-18:48 no log do
     # dono: PARKING 635 -> RESUMING 2921 -> PARKING 901 -> RESUMING 2911, tres
     # voltas em seis minutos, cada volta uma carga de modelo de 54 s). O dip da
@@ -319,14 +336,16 @@ MUTANTS = [
         self.bridge = None""",
      'E6 o park publica `captions` e NAO mata o processo'),
     ('resume-escondido-nao-levanta',
-     'a volta por GPU livre sai antes de levantar o pedido (E12, o estado terminal)',
+     'a volta por GPU livre decidida pelo pixel transitorio (E19, o dono quer legendas)',
      """        self._vram_parked = False
-        showing = bool(self.visible or getattr(self, '_caption_window_shown', False))""",
+        # O INTERRUPTOR DO DONO decide, nao o pixel transitorio (ver 21222-21229).
+        showing = bool(self.visible or getattr(self, '_caption_wanted', False))""",
      """        self._vram_parked = False
+        # O INTERRUPTOR DO DONO decide, nao o pixel transitorio (ver 21222-21229).
         if not (self.visible or getattr(self, '_caption_window_shown', False)):
             return False
         showing = bool(self.visible or getattr(self, '_caption_window_shown', False))""",
-     'E12 a GPU livre LEVANTA o pedido mesmo com o painel escondido'),
+     'E19 legenda QUERIDA com pixel apagado levanta o motor'),
 ]
 
 

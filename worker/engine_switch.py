@@ -848,7 +848,9 @@ class ReduxHiddenSwitch:
         self._inflight = None
 
         self._backoff_until = 0.0
-        self._captions = queue.Queue()
+        self._captions = queue.Queue(maxsize=1024)
+        #: linhas de lote largadas porque o consumidor nao escoou (Lei 9).
+        self.caption_drops = 0
         self._lock = threading.Lock()
 
     # -- the log line a boot leaves ----------------------------------------
@@ -1645,7 +1647,7 @@ class ReduxHiddenSwitch:
                 # `final:true` is the worker's OWN route vote — the panel's
                 # engine reads it to derive `route='final'`
                 # (`caption-formulation.js` `routeFor`).
-                self._captions.put({
+                self._put_caption({
                     "type": "caption",
                     "text": text,
                     "start": payload.get("start"),
@@ -1691,7 +1693,7 @@ class ReduxHiddenSwitch:
             if lines == 0:
                 # A silent batch is a FACT the run must state: the panel is
                 # hidden, the switch is armed, and the audio produced nothing.
-                self._captions.put({
+                self._put_caption({
                     "type": "status",
                     "state": "redux-batch-empty",
                     "producer": REDUX_PRODUCER,
@@ -1713,6 +1715,23 @@ class ReduxHiddenSwitch:
                     os.remove(wav_path)
                 except OSError:
                     pass
+
+    def _put_caption(self, payload):
+        """Enfileira uma linha SEM bloquear e CONTA o que teve de largar.
+
+        O lote corre numa thread e `drain_captions()` noutra. Se a segunda
+        parar (worker preso, painel ocupado), uma fila sem limite convertia
+        cada passe em memoria viva para sempre. O tecto e' 1024 linhas e a
+        perda e' PUBLICADA: `caption_drops` no resumo e `REDUX_CAPTION_DROP`
+        nas tres primeiras quedas, como em `_prefix_audioflag.py`.
+        """
+        try:
+            self._captions.put_nowait(payload)
+        except queue.Full:
+            self.caption_drops += 1
+            if self.caption_drops <= 3:
+                self.log("REDUX_CAPTION_DROP drops=%d cap=%d (consumer stalled)"
+                         % (self.caption_drops, self._captions.maxsize))
 
     def drain_captions(self):
         """The lines the runner produced, for the ASR thread to emit. Non-blocking.
@@ -1788,5 +1807,6 @@ class ReduxHiddenSwitch:
             f"batch_seconds={round(self.batch_seconds, 2)} "
             f"failures={self.runner_failures} deferred={self.deferred} "
             f"refusals={self.refusals} left_s={left} "
+            f"caption_drops={self.caption_drops} "
             f"spooled={self._pending_counts().get('spooled', 0)} "
             f"fallbacks={self.reader.fallbacks}/{self.reader.reads}")

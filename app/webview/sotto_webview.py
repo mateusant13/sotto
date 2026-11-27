@@ -2397,6 +2397,10 @@ _LOG_REPEAT = {}
 _LOG_FILE = None
 _LOG_QUEUE = None      # the mirror lines, one per log() call
 _LOG_WRITER = None     # the ONE thread that owns the file
+
+#: A fila do espelho do --log e' LIMITADA e CONTA o que teve de largar (Lei 9).
+_LOG_CAP = 4096
+_LOG_DROPPED = 0
 #: O CANO NAO PARA O FIO QUE O ESCREVE (2026-11-09). Medido no log do dono,
 #: 15:44:36: `BRIDGE_SILENT` matou um worker cujo `WORKER_ALIVE ... age_ms=39657`
 #: chegou 17 ms depois -- o batimento estava PRESO no cano, nao ausente, e o
@@ -2449,6 +2453,29 @@ def _enqueue_stdout(line):
     except queue.Full:
         _STDOUT_DROPPED += 1
 
+def _enqueue_log(line):
+    """Nunca espera pelo ficheiro; conta o que largou e DIZ quando volta a escoar.
+
+    O espelho e' assim tao LIMITADO como o cano do stdout (`_STDOUT_CAP`): um
+    consumidor preso nao pode converter linhas de evidencia em memoria sem fim.
+    O `LOG_MIRROR_SUPPLIED` diz quantas linhas se perderam, para a perda nunca
+    ser invisivel so' porque o dono nao estava a ver o ficheiro.
+    """
+    global _LOG_DROPPED
+    q = _LOG_QUEUE
+    if q is None:
+        return
+    if _LOG_DROPPED:
+        dropped, _LOG_DROPPED = _LOG_DROPPED, 0
+        try:
+            q.put_nowait('%s sotto: LOG_MIRROR_SUPPLIED dropped=%d (o ficheiro voltou a escoar)'
+                         % (_stamp(), dropped))
+        except queue.Full:                   # noqa: BLE001 -- nao ha' sitio para o aviso
+            _LOG_DROPPED = dropped
+    try:
+        q.put_nowait(line)
+    except queue.Full:
+        _LOG_DROPPED += 1
 
 
 def _open_log(path):
@@ -2507,7 +2534,7 @@ def _open_log(path):
         # against 0.005 / 0.018 / 0.736 ms without it, at the measured cadence
         # of 11.82 clicks a minute. The pointer for the whole desktop waits for
         # that write. So the caller queues the line and never waits for a disk.
-        _LOG_QUEUE = queue.SimpleQueue()
+        _LOG_QUEUE = queue.Queue(maxsize=_LOG_CAP)
         # TODO FIO DESTA SHELL PASSA A TER NOME AOS OLHOS DO WINDOWS (2026-11-05).
         # `threading.Thread(name=...)` e' um atributo Python, invisivel de fora, e
         # o `py-spy` NAO se consegue anexar a esta shell a partir de uma pane
@@ -2581,7 +2608,7 @@ def _log_drain_inline():
             break
         if line is None:
             try:
-                q.put(None)
+                q.put(None, block=False)
             except Exception:                   # noqa: BLE001
                 pass
             break
@@ -2614,7 +2641,10 @@ def _log_drain(timeout_s=2.0):
         _STDOUT_WRITER.join(timeout_s)
     if _LOG_QUEUE is None:
         return
-    _LOG_QUEUE.put(None)
+    try:
+        _LOG_QUEUE.put(None, block=False)
+    except queue.Full:                      # noqa: BLE001 -- escoar antes de fechar
+        _log_drain_inline()
     if _LOG_WRITER is not None:
         _LOG_WRITER.join(timeout_s)
         if _LOG_WRITER.is_alive():
@@ -2755,9 +2785,9 @@ def _write_stdout(line: str) -> None:
         _STDOUT_SINK['dead'] = True
         _STDOUT_SINK['err'] = f'{type(exc).__name__}: {exc}'
         try:
-            if _LOG_FILE is not None and _LOG_QUEUE is not None:
-                _LOG_QUEUE.put(f'{_stamp()} sotto: LOG_STDOUT_DEAD err={_STDOUT_SINK["err"]} '
-                               f'-- o cano do largador morreu; o ficheiro e\' o artefacto')
+            if _LOG_FILE is not None:
+                _enqueue_log(f'{_stamp()} sotto: LOG_STDOUT_DEAD err={_STDOUT_SINK["err"]} '
+                             f'-- o cano do largador morreu; o ficheiro e\' o artefacto')
         except Exception:                   # noqa: BLE001
             pass
 
@@ -2778,10 +2808,7 @@ def log(message: str) -> None:
     with _LOG_LOCK:
         _enqueue_stdout(line)
         if _LOG_FILE is not None:
-            try:
-                _LOG_QUEUE.put(line)
-            except Exception:               # noqa: BLE001
-                pass
+            _enqueue_log(line)
 
 
 def log_repeat(key: str, message: str, every_s: float = 300.0) -> None:
@@ -19477,6 +19504,9 @@ class SottoShell:
             self._paused = False
             self._external_parked = False
             self._vram_parked = False
+            # O PEDIDO PUBLICADO TEM UM DONO SO': limpar os latches sem levantar
+            # a chave deixava o worker largar o motor depois do revive.
+            self.set_engine_park(None)
             if bridge is not None:
                 bridge.stop('revive')
                 bridge.pending_error = None
@@ -21378,7 +21408,8 @@ class SottoShell:
         if not self._vram_parked or self._paused:
             return False
         self._vram_parked = False
-        showing = bool(self.visible or getattr(self, '_caption_window_shown', False))
+        # O INTERRUPTOR DO DONO decide, nao o pixel transitorio (ver 21222-21229).
+        showing = bool(self.visible or getattr(self, '_caption_wanted', False))
         log(f'VRAM_GUARD_RESUMING free_mb={free_mb:.0f} mode=engine-not-process '
             f'showing={showing}')
         if self.engine_park_reason() in ('vram', None):
