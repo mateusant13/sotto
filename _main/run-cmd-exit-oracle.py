@@ -1356,7 +1356,12 @@ def build_reverted_copy(neg_src: str, notes: list) -> str:
 
 
 # --------------------------------------------------------------------------
-def verdict_from(arms_ok, gaps_ok, census_ok, mutant_ok=True):
+def verdict_from(arms_ok, gaps_ok, census_ok, mutant_ok=False):
+    # FAIL-CLOSED (medido 2026-11-27, audit #10): o default era `True`, logo um
+    # chamador que nao medisse mutantes entrava no contrato como PASSOU. A
+    # camada que ninguem correu nao e' uma camada que passou -- o unico
+    # chamador (linha ~1696) passa o valor medido, e um esquecimento futuro
+    # agora pinta vermelho em vez de verde.
     """(exit_ok, why) for the WRAPPER's exit contract. PURE: no I/O, no state.
 
     AUDIT ROWS #30 / #C: this oracle prints THREE verdicts because they are three different claims,
@@ -1670,10 +1675,19 @@ def main() -> int:
                    else f'failed gaps={gaps_failed}')
     mutants_failed = [m['name'] for m in mutants
                       if not all(c[1] for c in m['checks'])]
-    mutant_ok = not mutants_failed
-    mutant_reason = ('the MUTANT is red on the two new checks and the CONTROL '
-                     'is green' if mutant_ok
-                     else f'failed mutants={mutants_failed}')
+    # UMA POPULACAO VAZIA NAO E' UMA CAMADA VERDE (medido 2026-11-27, audit #10).
+    # `mutant_ok = not mutants_failed` e' True quando nenhum mutante correu -- com
+    # `--arms` a selecionar um subconjunto sem mutantes, a bateria imprimia PASS
+    # sem uma unica prova de mutacao. A camada tem de EXISTIR e sobreviver.
+    mutant_ok = bool(mutants) and not mutants_failed
+    if not mutants:
+        mutant_reason = ('CANNOT-MEASURE why=no-mutant-in-selection -- nenhum '
+                         'mutante correu, logo nao ha camada de mutacao a julgar')
+    elif mutant_ok:
+        mutant_reason = ('the MUTANT is red on the two new checks and the CONTROL '
+                         'is green')
+    else:
+        mutant_reason = f'failed mutants={mutants_failed}'
     print(f'ARM-VERDICT    {"PASS" if arms_ok else "FAIL"}  {arms_reason}')
     if a.neg_arm and PREFLIGHT_MARK not in text_of(run_cmd):
         print('ARM-NOTE       the argv arm is VACUOUS in this copy: the pre-fix '

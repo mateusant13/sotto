@@ -412,6 +412,13 @@ def judge(measured, baseline, target=DEFAULT_TARGET_S, pct=RATCHET_PCT):
     else:
         reasons.append('regua=PAREDE em todos os %d passo(s) medidos (sem par de '
                        'CPU dos dois lados)' % len(now_wall))
+    # UM PASSO NOVO TAMBEM TEM TECTO (medido 2026-11-27, audit #3). Ate' aqui um
+    # passo sem baseline saia por `continue` das DUAS comparacoes -- o ratchet por
+    # passo (que precisa de `before`) e o tecto total (que so' julga a INTERSECAO)
+    # -- logo um passo novo de 200 s entrava e a bateria imprimia verde. A lei do
+    # TARGET diz que a corrida default, a quente, cabe em `DEFAULT_TARGET_S`, e um
+    # unico passo novo que consome o alvo inteiro nao e' um passo, e' a corrida.
+    grown_new = []
     grew = []
     for name, secs_wall in sorted(now_wall.items()):
         if name in base_cpu and name in now_cpu:
@@ -419,6 +426,11 @@ def judge(measured, baseline, target=DEFAULT_TARGET_S, pct=RATCHET_PCT):
         else:
             before = base_wall.get(name)
             if not before or before <= 0:
+                # `now_cpu` quando existe e' a regua mais estreita; senao a parede.
+                _secs = now_cpu.get(name, secs_wall)
+                if _secs > target:
+                    grown_new.append('%s %.1fs (novo, sem baseline; tecto absoluto %.1fs)'
+                                     % (name, _secs, target))
                 continue
             secs, unit = secs_wall, ''
         if before <= 0:
@@ -432,6 +444,9 @@ def judge(measured, baseline, target=DEFAULT_TARGET_S, pct=RATCHET_PCT):
     if grew:
         ok = False
         reasons.append('passo(s) que engordaram alem do ratchet: %s' % ' | '.join(grew))
+    if grown_new:
+        ok = False
+        reasons.append('passo(s) NOVO(s) acima do tecto absoluto: %s' % ' | '.join(grown_new))
     ceiling = float(baseline['total_s']) * pct
     inter, new_s = _intersection_total(measured, baseline)
     judged = measured['total_s'] if inter is None else inter

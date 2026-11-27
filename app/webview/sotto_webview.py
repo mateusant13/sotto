@@ -25552,7 +25552,32 @@ class WorkerBridge:
 
                 text = line.strip()
                 if text:
-                    self._consume(text, child)
+                    # UMA LINHA MA' NAO DERRUBA O CANAL INTEIRO (medido
+                    # 2026-11-27, audit #4). Aqui esta' a assimetria que custava
+                    # as legendas: o ramo de stderr embrulha CADA callback
+                    # (`on_stats`, `on_cost`) no seu proprio try, mas o ramo de
+                    # stdout chamava `_consume` DESABRIGADO dentro do `try` do
+                    # laco -- logo um `TypeError` numa linha JSON VALIDA com um
+                    # campo do tipo errado escapava para o `except` de fora,
+                    # escrevia `BRIDGE_PUMP_DIED` e FECHAVA o stdout. Um pump
+                    # morto e' um pai que ja' nao le o filho: a legenda congela
+                    # e nao volta, que e' o sintoma que o dono reportou.
+                    # A cura e' a mesma da porta vizinha -- a linha falha, o
+                    # canal sobrevive -- e o contador fica publicado para a
+                    # perda ser CONTADA em vez de silenciosa (a lei das filas).
+                    try:
+                        self._consume(text, child)
+                    except Exception as exc:  # noqa: BLE001
+                        self._consume_failures = getattr(
+                            self, '_consume_failures', 0) + 1
+                        # Uma linha por processo e uma a cada 60 s: um produtor
+                        # que dispara a cada amostra nao pode encher o log.
+                        if self._consume_failures == 1 or (
+                                time.monotonic() - getattr(
+                                    self, '_consume_fail_last', 0.0) >= 60.0):
+                            self._consume_fail_last = time.monotonic()
+                            self.log('BRIDGE_LINE_FAILED n=%d error=%r head=%r'
+                                     % (self._consume_failures, exc, text[:120]))
                 # AFTER the consume, not before (S7): the window is a function of
                 # the phase the line just PUBLISHED. `model-loaded` turns the
                 # watchdog back to `WORKER_SILENCE_MS`, and re-arming first would

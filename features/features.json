@@ -709,6 +709,7 @@
         "_main/bridge-caption-feeder.py",
         "_main/bridge-census.py",
         "_main/bridge-handler-map-oracle.py",
+        "_main/bridge-pump-fault-oracle.py",
         "_main/bridge-stall-probe.py",
         "_main/broadcast-header-probe.mjs",
         "_main/bug-ledger-oracle.py",

@@ -1565,6 +1565,20 @@ if exist _main\youtube-clock-property-oracle.py (
 call :step red-as-expected-youtube-clock-property 1 "_main\youtube-clock-property-oracle.py;app\webview\youtube_clock.py" "%OUT%\youtube-clock-property-neg.log" python _main\youtube-clock-property-oracle.py --neg-arm
 call :expectred red-as-expected-youtube-clock-property !STEP_RC! "%OUT%\youtube-clock-property-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-youtube-clock-property MISSING "%OUT%\youtube-clock-property-neg.log" "NEG-ARM: PASS" )
+REM `bridge-pump-fault` -- UMA LINHA MA' NO STDOUT NAO DERRUBA O CANAL DAS
+REM LEGENDAS (medido 2026-11-27, audit #4). O ramo de stderr ja embrulhava
+REM cada callback; o de stdout chamava `_consume` desabrigado dentro do `try`
+REM do laco, logo um TypeError numa linha JSON VALIDA escrevia BRIDGE_PUMP_DIED
+REM e fechava o stdout -- a legenda congela e nao volta. O braco mutante remove
+REM a guarda e exige o canal MORTO, para o oraculo saber ficar vermelho.
+if exist _main\bridge-pump-fault-oracle.py (
+call :step bridge-pump-fault 0 "_main\bridge-pump-fault-oracle.py;app\webview\sotto_webview.py" "%OUT%\bridge-pump-fault.log" python _main\bridge-pump-fault-oracle.py
+call :record bridge-pump-fault !STEP_RC!
+) else ( call :record bridge-pump-fault MISSING )
+if exist _main\bridge-pump-fault-oracle.py (
+call :step red-as-expected-bridge-pump-fault 1 "_main\bridge-pump-fault-oracle.py;app\webview\sotto_webview.py" "%OUT%\bridge-pump-fault-neg.log" python _main\bridge-pump-fault-oracle.py --neg-arm
+call :expectred red-as-expected-bridge-pump-fault !STEP_RC! "%OUT%\bridge-pump-fault-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-bridge-pump-fault MISSING "%OUT%\bridge-pump-fault-neg.log" "NEG-ARM: PASS" )
 REM `yt-headless-paint` (a metade dos PIXEIS, fora do ecra: o bitmap GDI+ real
 REM de `overlay_paint._layout`, lido por `LockBits`). Nao abre janela nem
 REM dispositivo -- o proprio passo imprime `windows_opened=0` -- logo NAO e' heavy.
