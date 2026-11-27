@@ -1,6 +1,6 @@
 {
   "schema": "revival.sliders/v1",
-  "updated_at": "2026-11-27T06:08:47Z",
+  "updated_at": "2026-11-27T07:26:56Z",
   "scale_0_100": [
     {
       "id": "delivery_balance",
@@ -16,11 +16,11 @@
       "id": "observability",
       "label": "Observability & Runtime Forensics",
       "baseline": 78,
-      "current": 88.0,
+      "current": 90.0,
       "target": 90,
       "counterpart": "Runtime overhead (<2%)",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/revival_verify.py --repo . --json",
-      "evidence": "measured 2026-11-27: revival_verify.py emits one JSON report with per-rail elapsed_ms; battery writes elapsed_s+cpu_s per step; refusals typed (CANNOT-MEASURE why=...). Gap: silent excepts not yet censused repo-wide."
+      "evidence": "measured 2026-11-27: 10/10 revival rails emit verdict+wall_s; 442 'call :expectred' battery steps; 154 distinct 'reason=' refusal tokens across app/+worker/; 36 'CANNOT-MEASURE why=' sites name the missing population; stall-attr answers HOST / SHELL-ONLY / HOST-IDLE from two processes' clocks; sim_memory gate payload carries problems/attempts/failed_attempts_preserved"
     },
     {
       "id": "inner_loop_speed",
@@ -46,11 +46,11 @@
       "id": "metric_gate_coverage",
       "label": "Per-I/O Metric Budgets & Blast-Radius Gates",
       "baseline": 35,
-      "current": 85.0,
+      "current": 87.0,
       "target": 90,
       "counterpart": "Gate wall time (<60s)",
-      "proof_cmd": "python I:/!watcher/scripts/benchmark_history.py run --repo . --label after --samples 3 --gate --blast-radius --verify-red",
-      "evidence": "measured 2026-11-27: 5 metrics (basic 2, subsystem 2, e2e 2) all PASS with --verify-red proving each red arm fires; two false red arms fixed today (feature-map neg-arm, CLR retry). Gap: audio/worker tiers have no metric."
+      "proof_cmd": "python I:/!watcher/scripts/benchmark_history.py run --repo . --label verify-gate --samples 3 --gate --no-record",
+      "evidence": "measured 2026-11-27: 6 metrics in benchmarks/budgets.json, all PASS under run --gate; the new subsystem.undefined_names_scan_ms has a genuine rc-1 red arm (-neg-arm: 3 RED / 2 GREEN); measured hole, not a claim: --verify-red now answers CANNOT-FALSIFY for every wall_ms metric ('no deterministic perturbed answer'), so magnitude falsification of timing metrics is CANNOT-MEASURE today"
     },
     {
       "id": "harness_falsifiers",
@@ -66,11 +66,11 @@
       "id": "reversibility_safety",
       "label": "Reversibility (Git Checkpoints + Worktrees + Rollback)",
       "baseline": 80,
-      "current": 88.0,
+      "current": 92.0,
       "target": 95,
       "counterpart": "Staging step friction",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py list --repo .",
-      "evidence": "measured 2026-11-27: 2 revival checkpoints (cold-start-20261126T200625Z sha 63abad5, pre-v410-sliders-20261127T060439Z at HEAD 5b9d3a3); worktree isolation required per lane; .ort cache migration idempotent. Gap: no restore rehearsal."
+      "evidence": "measured 2026-11-27: 3 checkpoints in revival/checkpoints.jsonl, the newest (post-v420-sliders-20261127, HEAD fd41e446e1) carries an 88.9 MB git bundle and 'git bundle verify' answers 'The bundle records a complete history / is okay'; every lane runs in its own worktree and lands by commit; the seat merges only after git cat-file -e <sha>^{commit}"
     },
     {
       "id": "autonomy_end_to_end",

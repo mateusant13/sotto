@@ -70,6 +70,8 @@ history/
 # it from the diff (`sim_updated_in_diff`), and `*.jsonl` above hid it, so the gate
 # could never be satisfied by the very update it requires.
 !revival/sim.jsonl
+# o ledger de checkpoints e' o artefacto de reversibilidade: versionado, como o sim
+!revival/checkpoints.jsonl
 !_main/_wordsplit-before.jsonl
 !_main/_wordsplit-after.jsonl
 

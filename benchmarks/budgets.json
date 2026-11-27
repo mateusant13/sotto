@@ -120,6 +120,29 @@
       ],
       "red_arm_cmd": "python _main/yt-headless-paint-oracle.py --neg-arm",
       "note": "MEDIDO 2026-11-26: 12,133 ms contra o orcamento de 16,667 ms (60 Hz); bitmaps_disposed=109, janelas abertas=0."
+    },
+    {
+      "id": "subsystem.undefined_names_scan_ms",
+      "tier": "subsystem",
+      "input_desc": "`_main/undefined-names-oracle.py` (19 production files: shell, caption, overlay, worker)",
+      "output_desc": "zero nomes de producao usados sem definicao; o numero E o invariante (o tempo era um wall_ms que o --verify-red nao sabe falsificar)",
+      "metric_name": "undefined_names",
+      "unit": "count",
+      "direction": "lower_is_better",
+      "ceiling": 0.0,
+      "timeout_s": 60.0,
+      "command": "python _main/undefined-names-oracle.py --json",
+      "parse_mode": "json_key",
+      "parse_pattern": "undefined",
+      "owner_paths": [
+        "_main/undefined-names-oracle.py"
+      ],
+      "blast_radius_callers": [
+        "_main/_audit-verify-all.cmd",
+        "_main/battery-launch.py"
+      ],
+      "red_arm_cmd": "python _main/undefined-names-oracle.py --neg-arm",
+      "note": "MEDIDO 2026-11-27: {\"files\":19,\"undefined\":0,\"undefined_files\":0,\"verdict\":\"GREEN\"}; ceiling 0 e o numero, logo --verify-red perturba-o para 1 e o tecto recusa (o wall_ms respondia CANNOT-FALSIFY). O braco negativo continua a ser --neg-arm, rc 1, 3 RED / 2 GREEN: o ultimo RED e o defeito real `cap_styles |= WS_EX_LAYERED` em app/webview/sotto_webview.py, que a populacao deixou GREEN e o ruff F821 apanhou."
     }
   ]
 }

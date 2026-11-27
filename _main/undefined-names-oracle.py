@@ -296,10 +296,24 @@ def neg_arm():
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument('--neg-arm', action='store_true')
+    ap.add_argument('--json', action='store_true',
+                    help='a contagem em JSON (o metric de benchmarks/budgets.json le este campo)')
     args = ap.parse_args(argv)
     if args.neg_arm:
         return neg_arm()
     bad = scan(POPULATION)
+    if args.json:
+        #: O METRIC E UM NUMERO, E ELE SABE FICAR VERMELHO. `--verify-red` do
+        #: `benchmark_history` constroi a resposta perturbada a partir do
+        #: `parse_mode`; um `wall_ms` responde CANNOT-FALSIFY (medido 2026-11-27,
+        #: os cinco metricos de tempo), logo a contagem e' o campo falsificavel:
+        #: ceiling 0 recusa qualquer 1 (ver o braco em verify-gate).
+        import json
+        print(json.dumps({'files': len(POPULATION),
+                          'undefined': sum(len(v) for v in bad.values()),
+                          'undefined_files': len(bad),
+                          'verdict': 'GREEN' if not bad else 'RED'}))
+        return 0 if not bad else 1
     if not bad:
         print('UNDEFINED-NAMES GREEN -- %d ficheiros de producao, 0 nomes usados '
               'e nunca definidos' % len(POPULATION))
