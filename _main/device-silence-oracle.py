@@ -365,10 +365,10 @@ def main(argv: list[str]) -> int:
     # O AUDIO DO DONO NAO SE TOCA (ordem 2026-11-02): este oraculo RENDERIZA e
     # abre endpoint. Sem a bandeira dele nao corre -- e diz SKIPPED, nunca GREEN.
     if str(os.environ.get("SOTTO_OWNER_AUDIO_OK") or "").strip() != "1":
-        print("DEVICE-SILENCE VERDICT: SKIPPED")
+        print("DEVICE-SILENCE VERDICT: SKIPPED reason=no-owner-audio-flag")
         print("recusa: audio do dono (device-silence nao corre sem "
               "SOTTO_OWNER_AUDIO_OK=1)")
-        print("\nVERDICT: SKIPPED")
+        print("\nVERDICT: SKIPPED reason=no-owner-audio-flag")
         return 0
 
     if neg:

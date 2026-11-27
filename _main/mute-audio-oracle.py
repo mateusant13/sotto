@@ -708,10 +708,10 @@ def main() -> int:
     # instrumentos que ABREM endpoint; sem a bandeira dele ele nao corre, e diz
     # SKIPPED -- nunca GREEN, porque um passo saltado nao e' um portao que passou.
     if str(os.environ.get("SOTTO_OWNER_AUDIO_OK") or "").strip() != "1":
-        print("MUTE-AUDIO VERDICT: SKIPPED")
+        print("MUTE-AUDIO VERDICT: SKIPPED reason=no-owner-audio-flag")
         print("recusa: audio do dono (mute-audio-oracle nao corre sem "
               "SOTTO_OWNER_AUDIO_OK=1)")
-        print("\nVERDICT: SKIPPED")
+        print("\nVERDICT: SKIPPED reason=no-owner-audio-flag")
         return EXIT_PASS
 
     print("ARMS (the real mute, on the real default output)")

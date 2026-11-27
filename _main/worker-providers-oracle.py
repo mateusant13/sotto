@@ -32,8 +32,12 @@ cuDNN 9; they ship inside the nvidia wheels, NOT on PATH):
   * `CUDAExecutionProvider` in `available` but NOT in `selected` -> RED. A CUDA EP
     that is registered and cannot load is the silent CPU fallback that made the
     live engine 4x slower than it should be.
-  * no `WORKER_PROVIDERS` line in the log -> `VERDICT: SKIPPED`, never GREEN: an
-    instance started before this line existed is not evidence either way.
+  * a `WORKER_GPU_POLICY` readback but NO `WORKER_PROVIDERS` line -> RED: the
+    worker from this code announced its policy and then lost the providers
+    line. That is an instrumentation regression, not a missing session, and it
+    must not sit in `skipped=` run after run.
+  * neither kind of line in the log -> `VERDICT: SKIPPED reason=no-provider-line`,
+    never GREEN: an instance that wrote neither is not evidence either way.
 
 `--neg-arm` feeds synthetic policy records through the SAME judge that publishes
 the verdict -- the GPU-only configuration must PASS, while CPU fallback, an
@@ -142,6 +146,13 @@ def last_readback(path: str):
 
 def main(argv: list[str]) -> int:
     neg = "--neg-arm" in argv
+    path = LOG
+    if "--log" in argv:
+        at = argv.index("--log")
+        if at + 1 >= len(argv):
+            print("usage: worker-providers-oracle.py [--neg-arm] [--log PATH]")
+            return 2
+        path = argv[at + 1]
     if neg:
         selected = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         available = ["CUDAExecutionProvider", "CPUExecutionProvider"]
@@ -178,11 +189,17 @@ def main(argv: list[str]) -> int:
         # caught the defect (the battery demands rc=1 and the phrase).
         return 1
 
-    row, policy_match = last_readback(LOG)
+    row, policy_match = last_readback(path)
     if not row:
-        print("no WORKER_PROVIDERS line in %s" % os.path.relpath(LOG, REPO))
-        print("WORKER-PROVIDERS VERDICT: SKIPPED")
-        print("\nVERDICT: SKIPPED")
+        if policy_match:
+            print("WORKER_GPU_POLICY present but no WORKER_PROVIDERS line in %s"
+                  % os.path.relpath(path, REPO))
+            print("WORKER-PROVIDERS VERDICT: RED")
+            print("\nVERDICT: RED")
+            return 1
+        print("no WORKER_PROVIDERS line in %s" % os.path.relpath(path, REPO))
+        print("WORKER-PROVIDERS VERDICT: SKIPPED reason=no-provider-line")
+        print("\nVERDICT: SKIPPED reason=no-provider-line")
         return 0
     policy = ({
         "asr": policy_match.group("asr"),

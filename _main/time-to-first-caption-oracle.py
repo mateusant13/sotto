@@ -615,7 +615,7 @@ def main(argv=None):
         # medir, e o passo da bateria conta-o em `skipped=`. Um ficheiro que EXISTE e
         # nao se consegue ler continua a ser SEM DADOS (rc=2): isso e' um defeito.
         print("TIME-TO-FIRST-CAPTION: %s does not exist -- nothing to measure" % args.log)
-        print("TIME-TO-FIRST-CAPTION VERDICT: SKIPPED")
+        print("TIME-TO-FIRST-CAPTION VERDICT: SKIPPED reason=no-log")
         return 0
     except OSError as exc:
         print("TIME-TO-FIRST-CAPTION: cannot read %s (%s)" % (args.log, exc))
@@ -648,7 +648,7 @@ def main(argv=None):
                      % why)
             verdict, rc = "SKIPPED", 0
             body = body.replace("TIME-TO-FIRST-CAPTION VERDICT: FAIL",
-                                "TIME-TO-FIRST-CAPTION VERDICT: SKIPPED")
+                                "TIME-TO-FIRST-CAPTION VERDICT: SKIPPED reason=live-code-stale")
     print(body)
     return rc
 

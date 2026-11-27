@@ -24,8 +24,8 @@ o numero atribuivel:
      boot nenhum
   A5 o total e' IMPRESSO, com as marcas em ordem -- o numero que o dono paga tem
      de estar na saida do passo, nao so' no ficheiro dele
-  K  sem linha nenhuma: `SKIPPED` (o worker ainda nao arrancou com a cura), e um
-     passo saltado nunca conta como verde
+  K  sem linha nenhuma: `SKIPPED reason=no-profile-line` (o worker ainda nao
+     arrancou com a cura), e um passo saltado nunca conta como verde
 
 USO
   python _main/boot-profile-oracle.py            -> rc=0 (PASS ou SKIPPED)
@@ -156,14 +156,14 @@ def main(argv):
     print("BOOT-PROFILE")
     if not os.path.exists(LOG):
         print("  K    SKIP  log ausente: %s" % LOG)
-        print("VERDICT: SKIPPED")
+        print("VERDICT: SKIPPED reason=no-log")
         return 0
     with open(LOG, "r", encoding="utf-8", errors="replace") as fh:
         profiles = parse_profiles(fh.read())
     if not profiles:
         print("  K    SKIP  nenhuma linha %s no log (o worker ainda nao arrancou "
               "com a cura de visibilidade)" % TAG)
-        print("VERDICT: SKIPPED")
+        print("VERDICT: SKIPPED reason=no-profile-line")
         return 0
     prof = profiles[-1]
     fails = judge(prof)

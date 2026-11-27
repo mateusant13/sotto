@@ -35,9 +35,12 @@ A SEGUNDA METADE DA ACEITACAO, no mesmo ficheiro porque e' a mesma linha do ecra
 
 CODIGOS DE SAIDA
   0  PASS  -- mediana <= 150 ms, >= 5 cues pintados, nenhuma pintura com > 2 linhas
-  1  FAIL  -- mediana > 150 ms com >= 5 cues, OU uma pintura com > 2 linhas
-  2  SEM DADOS -- nenhum `CAPTION_LAND`, menos de 5 cues (uma amostra de 4 nao e'
-              uma medicao), ficheiro ilegivel, ou numeros que nao concordam
+  1  FAIL  -- mediana > 150 ms com >= 5 cues, OU pintura com > 2 linhas, OU
+             numeros que nao concordam (lag_ms contra paint_t-cue_t0, cue_t0
+             pintado duas vezes), OU linha `CAPTION_LAND` ilegivel. Um registo
+             que mente e' um defeito, nao um SKIP que se repete para sempre.
+  2  SEM DADOS -- nenhum `CAPTION_LAND` legitimo, menos de 5 cues (uma amostra
+             de 4 nao e' uma medicao), ou ficheiro ilegivel
 
 `--neg-arm` prova o instrumento contra si proprio: parte de um log sintetico
 VERDE (construido em memoria, porque o processo que la' corre ainda nao tem a
@@ -78,12 +81,13 @@ _DECIDED = re.compile(
 
 
 def parse(lines):
-    """`(land, drops, epoch_drops, decided, n_lines)` de linhas de log."""
+    """`(land, drops, epoch_drops, decided, bad_land, n_lines)` de linhas de log."""
     land = []
     drops = []
     epoch_drops = 0
     decided = set()
     n_lines = 0
+    bad_land = 0
     for raw in lines:
         n_lines += 1
         line = raw.rstrip("\n")
@@ -98,6 +102,9 @@ def parse(lines):
                 "rows": int(m.group(4)) if m.group(4) is not None else None,
             })
             continue
+        if "CAPTION_LAND" in line:
+            bad_land += 1
+            continue
         m = _DROP.search(line)
         if m:
             drops.append({"cue_t0": float(m.group(1)), "reason": m.group(2)})
@@ -108,7 +115,7 @@ def parse(lines):
         m = _DECIDED.search(line)
         if m:
             decided.add(round(float(m.group(1)), 3))
-    return land, drops, epoch_drops, decided, n_lines
+    return land, drops, epoch_drops, decided, bad_land, n_lines
 
 
 def percentile(values, pct):
@@ -120,7 +127,7 @@ def percentile(values, pct):
     return ordered[min(len(ordered) - 1, k - 1)]
 
 
-def evaluate(land, drops, epoch_drops, decided):
+def evaluate(land, drops, epoch_drops, decided, bad_land=0):
     """O veredicto e os numeros que o sustentam.
 
     `rc` e' o contrato do ticket: 0 PASS, 1 FAIL, 2 SEM DADOS. `why` e' a razao
@@ -137,6 +144,7 @@ def evaluate(land, drops, epoch_drops, decided):
         "inconsistentes": [],
         "rc": 2,
         "why": "",
+        "skip_reason": None,
     }
     # DEDUPE POR `cue_t0`: o mesmo cue pintado duas vezes seria um segundo
     # `UpdateLayeredWindow` com o mesmo carimbo, ou seja um log mentiroso. Fica o
@@ -159,20 +167,30 @@ def evaluate(land, drops, epoch_drops, decided):
                 "cue_t0=%.3f rows=%d" % (key, item["rows"]))
     items = [seen[key] for key in sorted(seen)]
     out["pintados"] = len(items)
+    if bad_land:
+        out["rc"] = 1
+        out["why"] = ("%d linha(s) CAPTION_LAND nao se leem (cue_t0/paint_t/"
+                      "lag_ms em falta): o instrumento escreveu um registo "
+                      "inutilizavel -- RED, nao um SKIP eterno" % bad_land)
+        return out
     if not items:
         out["why"] = "nenhum CAPTION_LAND no log (a app viva ainda nao tem a linha)"
+        out["skip_reason"] = "no-land"
         return out
     lags = [int(round(it["lag_ms"])) for it in items]
     out["mediana_ms"] = percentile(lags, 50)
     out["p95_ms"] = percentile(lags, 95)
     out["max_ms"] = max(lags)
     if out["inconsistentes"]:
-        out["why"] = ("numeros que nao concordam (%s)"
-                      % out["inconsistentes"][0])
+        out["rc"] = 1
+        out["why"] = ("numeros que nao concordam (%s): a pintura mentiu sobre o "
+                      "cue, logo a amostra nao e' digna de credito -- RED, nao "
+                      "SKIP" % out["inconsistentes"][0])
         return out
     if out["pintados"] < MIN_CUES:
         out["why"] = ("%d cue(s) pintado(s) < %d: amostra pequena demais para "
                       "uma mediana" % (out["pintados"], MIN_CUES))
+        out["skip_reason"] = "too-few-cues"
         return out
     if out["violacoes_linhas"]:
         out["rc"] = 1
@@ -212,9 +230,11 @@ def report(out, stream):
     # `SEM DADOS` que saia 2 seria contado FAIL -- mas nao ha' portao nenhum que
     # tenha falhado quando a sessao viva ainda nao escreveu `CAPTION_LAND`, e um
     # passo saltado NAO e' um portao que passou: conta-se SKIPPED, nunca verde.
-    stream.write("YOUTUBE-LAND VERDICT: %s\n"
+    skip_reason = (" reason=" + (out.get("skip_reason") or "no-data")
+                   if out["rc"] == 2 else "")
+    stream.write("YOUTUBE-LAND VERDICT: %s%s\n"
                  % ("PASS" if out["rc"] == 0 else
-                    "FAIL" if out["rc"] == 1 else "SKIPPED"))
+                    "FAIL" if out["rc"] == 1 else "SKIPPED", skip_reason))
 
 
 # ── O BRAÇO NEGATIVO ─────────────────────────────────────────────────────────
@@ -313,17 +333,18 @@ def neg_arm():
         ("late", "pintura 500 ms atrasada", 1),
         ("no-land", "sem CAPTION_LAND nenhum", 2),
         ("one-cue", "um cue so' (amostra pequena)", 2),
-        ("lying-lag", "lag_ms a mentir contra paint_t", 2),
-        ("no-t0", "linha sem cue_t0 (nao se le')", 2),
+        ("lying-lag", "lag_ms a mentir contra paint_t", 1),
+        ("no-t0", "linha sem cue_t0 (nao se le')", 1),
         ("three-rows", "pintura com 3 linhas", 1),
     ]
     caught = 0
     for kind, why, want in mutants:
-        out = evaluate(*parse(_mutate(_synthetic(True), kind))[:4])
+        out = evaluate(*parse(_mutate(_synthetic(True), kind))[:5])
         hit = out["rc"] == want
         caught += 1 if hit else 0
         print("NEG-ARM %-10s %-38s want rc=%d got rc=%d %s"
               % (kind, why, want, out["rc"], "CAIU" if hit else "** PASSOU **"))
+    live_counts = 0
     if os.path.exists(DEFAULT_LOG):
         # O LOG REAL, quando ja' tiver linhas: o mesmo mutante de atraso tem de
         # cair nele tambem. Um oraculo so' provado em fixture e' um oraculo de
@@ -340,15 +361,15 @@ def neg_arm():
         # para o veredicto, ou o braco nao existe.
         # O BRACO VIVO SO' EXISTE SE A AMOSTRA SERVIR (corrigido 2026-11-08).
         # A guarda era a CONTAGEM de cues; medido hoje no log de 418 814
-        # linhas: 5672 cues e o CONTROL ja' devolve rc=2 (`numeros que nao
+        # linhas: 5672 cues e o CONTROL devolvia rc=2 (`numeros que nao
         # concordam (cue_t0=202.397 pintado duas vezes)`) -- e o mutante
-        # herdava esse 2, que o braco lia como "escapou". O braco passa a
-        # perguntar ao CONTROL, e uma amostra imensuravel e' dita em voz alta
-        # e NAO entra no total (um braco que corre sempre vermelho por falta de
-        # dados e' ruido, nao prova).
-        base = evaluate(*parsed[:4])
+        # herdava esse 2, que o braco lia como "escapou". Agora esse caso e'
+        # rc=1 (a linha mentiu: e' um defeito, nao um SKIP que nunca expira),
+        # e o braco vivo so' corre quando o CONTROL esta' verde -- uma amostra
+        # imensuravel e' dita em voz alta e NAO entra no total.
+        base = evaluate(*parsed[:5])
         if len(parsed[0]) >= MIN_CUES and base["rc"] == 0:
-            out = evaluate(*parse(_mutate(real, "late"))[:4])
+            out = evaluate(*parse(_mutate(real, "late"))[:5])
             hit = out["rc"] == 1
             caught += 1 if hit else 0
             print("NEG-ARM %-10s %-38s want rc=1 got rc=%d %s"
@@ -381,8 +402,9 @@ def _real_land_count():
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description=("Mede land_lag_ms por cue pintado (paint_t - cue_t0) no log "
-                     "vivo: 0 PASS, 1 FAIL (mediana > %d ms com >= %d cues, ou "
-                     "pintura com > %d linhas), 2 SEM DADOS."
+                     "vivo: 0 PASS, 1 FAIL (mediana > %d ms com >= %d cues, "
+                     "pintura com > %d linhas, numeros que nao concordam ou "
+                     "linha ilegivel), 2 SEM DADOS."
                      % (LIMIAR_MS, MIN_CUES, MAX_ROWS)))
     ap.add_argument("--log", default=DEFAULT_LOG,
                     help="log a ler (por omissao %s)" % DEFAULT_LOG)
@@ -402,14 +424,14 @@ def main(argv=None):
             lines = fh.readlines()
     except OSError as exc:
         print("SEM DADOS -- log ilegivel: %r" % (exc,))
-        print("YOUTUBE-LAND VERDICT: SKIPPED")
+        print("YOUTUBE-LAND VERDICT: SKIPPED reason=log-unreadable")
         return 0
     if args.tail and args.tail > 0:
         lines = lines[-args.tail:]
-    land, drops, epoch_drops, decided, n_lines = parse(lines)
+    land, drops, epoch_drops, decided, bad_land, n_lines = parse(lines)
     print("LOG       %s (%d linhas, %d CAPTION_LAND)"
           % (args.log, n_lines, len(land)))
-    out = evaluate(land, drops, epoch_drops, decided)
+    out = evaluate(land, drops, epoch_drops, decided, bad_land)
     report(out, sys.stdout)
     # SEM DADOS (rc=2 do ticket) e' rc=0 NA BATERIA, com a frase de skip: e' a
     # unica forma de o passo poder ser skip-capable sem transformar um skip num
