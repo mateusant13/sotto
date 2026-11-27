@@ -1285,6 +1285,40 @@ O que esta declarado e nao medido (e por isso nao se afirma): **`docs/por-medir.
 **`verified` continua impossivel de uma lane** - sem verificador independente e sem corrida real
 da app; o ledger imprime `FIXED, NOT VERIFIED`.
 
+## O GATE DE REVIVAL E UM FICHEIRO, E AS DUAS VOCABULARIOS SAO DECLARADOS (medido 2026-11-27)
+
+Ordem do dono via Herdr (dm-0d23648ea897a2fb1d16-6, ROLLOUT F6): *"use o skill `project-revival` E o
+`codeintel full` NESTE projeto... Publique um RECIBO, nao um adjetivo."*
+
+- **2026-11-27 · `scripts/revival_gate.py` e' o entrypoint que a frota procura, e ele existe EM CODIGO.**
+  Le `features/features.json` + `harness/angles.tsv` + `benchmarks/budgets.json` + `revival/GOAL.json`
+  e devolve rc. Medido no mesmo turno: positivo `REVIVAL GATE PASS` rc **0** (`FEATURE SYNC OK`,
+  `ANGLES OK (33 rows)`, `ANGLES HOLES 5`, `BUDGETS OK (6)`, `GOAL OK (5)`) e `--neg-arm` rc **1** com
+  `NEG-ARM 3/3 mutants caught` sobre uma COPIA (`--root`), com controlo `unmutated copy PASS (rc=0)`
+  primeiro -- sem esse controlo, uma arvore temporaria que falha sempre faria cada mutante parecer
+  apanhado. As tres mutacoes: linha sem comando, macro-feature nao declarada, HOLE com comando.
+- **2026-11-27 · A MATRIZ FALA FUNCIONAL, O MAPA FALA DIRETORIO, E A TRADUCAO E' UM FICHEIRO.**
+  `harness/angles.tsv` nomeia `caption-pipeline`, `youtube-caption`, `altc-gesture`, `audio-capture`,
+  `history`, `codebase`; `features/features.json` nomeia diretorios (`_main`, `app/webview`, ...).
+  `harness/features-functional.json` declara `owners` de cada nome funcional e, em `uncovered_macro`,
+  cada macro-feature SEM linha de angulo **com a razao escrita** -- cobertura silenciosa nao existe, e
+  o gate recusa um `uncovered_macro` sem razao ou que nomeie uma feature inexistente.
+- **2026-11-27 · UM HOLE E' UMA LINHA DECLARADA, NUNCA UM CAMPO VAZIO.** Uma linha cujo `note` comeca por
+  `HOLE:` nao leva `cmd`/`neg` e o gate conta-a (`ANGLES HOLES n`); uma linha com `cmd` vazio e sem o
+  marcador e' recusada (`empty cmd`), e um HOLE que carregue um comando tambem (`HOLE row carries a
+  command`). Uma linha PARTIAL foi convertida: onde havia comando real (`config-truth`,
+  `agents-md-pins`, `youtube-captions`) a linha passou a corrida com `--neg-arm`; onde nao havia,
+  passou a HOLE com a populacao em falta nomeada.
+- **2026-11-27 · A COLUNA `pre` E' EXTENSAO DECLARADA.** O contrato da frota e' 6 colunas
+  (`feature, angle, cmd, expect, neg, note`); a nossa matriz tem 7 (a `pre` de uma linha LIVE). O gate
+  aceita 6 ou 7 e o cabecalho sem `#` e' reconhecido pelos proprios nomes -- um cabecalho lido como
+  dado virava `unknown feature: feature`.
+- **2026-11-27 · O primeiro `codeintel full` recusou por POPULACAO, nao por codigo.**
+  `--scope H:/sotto/scripts` (absoluto) e `--scope scripts --max-population-files 400` devolveram
+  `PRODUCER-CEILING` com `population_counts={'scope': 0}`: a populacao nao foi selecionada, logo o
+  veto mediu o walk inteiro. O caminho que mede e' `--scope scripts` SEM o tecto de populacao; o
+  numero medido vive no recibo `_main/receipt-20261127-f6-revival-gate-and-codeintel.md`.
+
 ## COMO APROFUNDAR
 `docs/AGENTS-archive-20261021.md` (a história completa, com os números verbatim) ·
 `docs/shell-contract.md` · `docs/model-specs/README.md` · `docs/audit/` · `_main/receipt-*.md`

@@ -1,0 +1,66 @@
+{
+  "schema": "sotto.functional-features/v1",
+  "what": "The angle matrix speaks FUNCTIONAL names (caption-pipeline, youtube-caption...); features/features.json speaks DIRECTORY names (_main, app/webview...). This file is the declared translation between the two, so an angle row is auditable against the tracked tree instead of living in a parallel world. A macro feature with no functional owner is listed under `uncovered_macro` WITH its reason -- coverage is declared, never implied.",
+  "features": [
+    {
+      "id": "caption-pipeline",
+      "owners": [
+        "app/webview",
+        "_main",
+        "worker"
+      ],
+      "what": "worker JSONL -> shell routing -> overlay paint + history store"
+    },
+    {
+      "id": "youtube-caption",
+      "owners": [
+        "app/webview",
+        "_main"
+      ],
+      "what": "CDP snapshot -> clock/seek/pause witness -> served cue"
+    },
+    {
+      "id": "altc-gesture",
+      "owners": [
+        "app/webview",
+        "_main"
+      ],
+      "what": "hotkey_gesture.next_action -> strip / right panel / hide"
+    },
+    {
+      "id": "audio-capture",
+      "owners": [
+        "worker",
+        "_main"
+      ],
+      "what": "loopback + mic tap -> capture_share -> sidecar"
+    },
+    {
+      "id": "history",
+      "owners": [
+        "_main",
+        "app/webview"
+      ],
+      "what": "final lines -> history/<date>/<hour>.md, idempotent on start="
+    },
+    {
+      "id": "codebase",
+      "owners": [],
+      "scope": "repo",
+      "what": "whole-tree steady-state: the product soak over the product's own artifacts"
+    }
+  ],
+  "uncovered_macro": {
+    "_recovered": "frozen pre-loss snapshots; no runtime surface to falsify",
+    "app/_legacy-electron": "dead tree -- the Electron app is morto (AGENTS.md)",
+    "app/verify": "Rust stubs with their own receipt, app/verify/verify-run.log",
+    "bend_core": "needs WSL ubuntu-bend; BEND2/WSL retired by owner order 2026-11-25",
+    "discord": "needs DISCORD_BOT_TOKEN; the alternative route only when the owner asks",
+    "probe": "diagnostic taps; their proof is their own probe/*.log",
+    "root-entrypoints": "thin entrypoints; covered by the battery, not by an angle",
+    "tools": "bend tooling; see bend_core",
+    "_tools": "read-only SQLite censuses over the miniMax runtime store; no product surface they can break",
+    "app/shadowplay": "covered by scripts/gate.py stage `tests` (app/shadowplay/run-all.mjs suites), which is a driver stage, not an angle row",
+    "scripts": "covered by scripts/gate.py stages `pytest` and `task-resolver` -- the rails those scripts guard are their own gate"
+  }
+}

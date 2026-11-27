@@ -14,6 +14,13 @@ Rails inventoried here (path -> what it refuses):
       feature x angle rows; each row carries its own cmd AND its neg arm.
   revival/FRICTION.json + loop_friction_audit.py measure --gate
       inner-loop friction / offline-twin regression.
+  scripts/revival_gate.py
+      the revival contract as ONE file: feature map, angle matrix (coverage,
+      holes declared, the angulos.tsv twin), budgets, goal receipts.
+  revival/sim.jsonl + sim_memory.py --repo . gate
+      the self-improvement ledger itself: a row whose cause, action or
+      falsifier is missing, a graduated row that still has no enforcer, or a
+      ledger that drifted from the rows the last commit claims (rc 1).
   app/shadowplay/run-all.mjs and its *.test.mjs population
       failing suites or a refused parse probe (pre-commit runs the same entry).
   scripts/test_task_resolver_gate.py (pytest)
@@ -69,6 +76,8 @@ TIME_LIMITS = {
     "budgets": 40.0,
     "angles": 25.0,
     "friction": 35.0,
+    "revival": 30.0,
+    "sim": 25.0,
     "pytest": 30.0,
     "agc": 25.0,
     "task-resolver": 25.0,
@@ -250,6 +259,22 @@ def stage_angles(deadline: float) -> dict:
                   round((time.monotonic() - started) * 1000))
 
 
+def stage_revival(deadline: float) -> dict:
+    name = "revival"
+    tool = rail(name, REPO / "scripts" / "revival_gate.py")
+    if not tool.is_file():
+        return refused(name, f"missing rail: {tool}")
+    return one(name, [sys.executable, str(tool)], REPO, deadline)
+
+
+def stage_sim(deadline: float) -> dict:
+    name = "sim"
+    tool = rail(name, REVIVAL / "sim_memory.py")
+    if not tool.is_file():
+        return refused(name, f"missing rail: {tool}")
+    return one(name, [sys.executable, str(tool), "--repo", str(REPO), "gate"], REPO, deadline)
+
+
 def stage_friction(deadline: float) -> dict:
     name = "friction"
     tool = rail(name, REVIVAL / "loop_friction_audit.py")
@@ -321,6 +346,8 @@ BUILDERS = {
     "budgets": stage_budgets,
     "angles": stage_angles,
     "friction": stage_friction,
+    "revival": stage_revival,
+    "sim": stage_sim,
     "tests": stage_tests,
     "pytest": stage_pytest,
     "agc": stage_agc,

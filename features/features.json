@@ -1,9 +1,9 @@
 {
   "schema": "revival.features/v1",
   "repo": "sotto",
-  "git_head": "871892d",
-  "generated_at": "2026-11-27T20:56:35Z",
-  "total_tracked_files": 3444,
+  "git_head": "5133395",
+  "generated_at": "2026-11-27T22:48:19Z",
+  "total_tracked_files": 3449,
   "feature_count": 15,
   "features": [
     {
@@ -1072,6 +1072,7 @@
         "_main/punct-model-oracle.py",
         "_main/punct-prosody-oracle.py",
         "_main/punctuation-oracle.py",
+        "_main/qi-log-bound-oracle.py",
         "_main/quarantine-index-collision-20260707/__init__.py",
         "_main/quarantine-index-collision-20260707/schema.py",
         "_main/quarantine-index-collision-20260707/search.py",
@@ -1349,11 +1350,10 @@
         "_main/zip-mockups/zip-C-panels.html",
         "_main/zip-mockups/zip-D-themes.html",
         "_main/zip-mockups/zip-E-panels.html",
-        "_main/zipc-designs-oracle.py",
-        "_main/qi-log-bound-oracle.py"
+        "_main/zipc-designs-oracle.py"
       ],
-      "file_count": 1339,
-      "recent_commit_touches": 385,
+      "file_count": 1340,
+      "recent_commit_touches": 386,
       "recent_commit_subjects": [
         "perf(nemotron-oracle): split a 1.5 MB source once, not 12x (46.2s -> 3.0s CPU)",
         "fix(gates): two false greens closed, ambient arm declared, dm-triage wired",
@@ -1361,6 +1361,7 @@
         "ops: battery GREEN -- cheaper oracles, chrome and token removals",
         "perf(sidecar): the diarizer window drops to the measured side of the cliff",
         "fix(captions): a booting page is not a verdict, and the mirror carries the proven pause",
+        "fix(log): a rotation that cannot happen is now counted and named",
         "fix(stepcache): record SKIP-SLOW cost and reason in the ratchet row"
       ],
       "how_it_works": "_main is the verification workshop rather than shipped runtime: `_main/_audit-verify-all.cmd` runs the aggregated battery and records each step's rc, while `_main/battery-budget-oracle.py` enforces the per-step ratchet against `_main/battery-budget-baseline.json` and `_main/tooling-intent-oracle.py` checks that new instruments declare the bug they serve. `_main/yt-capture-replay-oracle.py` and `_main/yt-headless-paint-oracle.py` replay real player and paint fixtures offline, and `_main/dead-unwired-oracle.py` keeps the known-unwired twins from silently becoming second owners. Step timings live in `_cache/battery-steps.json`; none of this opens the owner's app.",
@@ -1804,12 +1805,12 @@
         "app/webview/z_order.py"
       ],
       "file_count": 52,
-      "recent_commit_touches": 68,
+      "recent_commit_touches": 70,
       "recent_commit_subjects": [
+        "fix(worker): bound the QueryInterface log and wire both new gates",
+        "fix(log): a rotation that cannot happen is now counted and named",
         "fix(law): bound log and caption queues, let owner switch and revive own park key",
         "test(oracles): replace object.__new__ with documented for_test seams",
-        "fix(captions): one malformed line on stdout killed the whole caption channel",
-        "fix(shell): a guard on one door and missing on its twin is half a guard",
         "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth",
         "fix(caption): the heartbeat writes its first tick before anything can stop it",
         "fix(youtube): a stale photo and a disproved pause no longer blank the caption"
@@ -1970,10 +1971,11 @@
         "scripts/agc-gate.sh",
         "scripts/check-bug-hunt-wiring.py",
         "scripts/gate.py",
+        "scripts/revival_gate.py",
         "scripts/task-resolver-gate.py",
         "scripts/test_task_resolver_gate.py"
       ],
-      "file_count": 5,
+      "file_count": 6,
       "recent_commit_touches": 2,
       "recent_commit_subjects": [
         "test(gate): one unified driver for sotto's real rails",
@@ -2077,13 +2079,13 @@
         "worker/wasapi_loopback.py"
       ],
       "file_count": 44,
-      "recent_commit_touches": 55,
+      "recent_commit_touches": 56,
       "recent_commit_subjects": [
-        "fix: the constant my trim deleted, and three controls that had stopped judging",
-        "perf(sidecar): the cliff note keeps the measurement without the essay",
-        "perf(sidecar): the diarizer window drops to the measured side of the cliff",
-        "fix(youtube): a stale photo and a disproved pause no longer blank the caption",
-        "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth"
+        "fix(worker): bound the QueryInterface log and wire both new gates",
+        "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth",
+        "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery",
+        "feat(audio): capture the microphone and transcribe both sides",
+        "fix: the constant my trim deleted, and three controls that had stopped judging"
       ],
       "how_it_works": "`worker/sotto_worker.py` is the live ASR worker: sounddevice loopback capture into a ring, resample, ONNX streaming features, RNN-T decode, punctuation and prosody, and speaker sidecars, with one JSON object per flushed stdout line. `live_route.py` and `engine_switch.py` choose the engine, `audio_queue_consumer.py` drains the queue and `discord_streams.py` is the alternate reader reachable from `run.cmd --worker`. `_main/audio-recorder-oracle.py` and `_main/worker-churn-oracle.py` gate capture and shell-driven restarts.",
       "inputs": [
