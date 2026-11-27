@@ -1,0 +1,4 @@
+# Pinned mutant photo of worker/sotto_worker.py: sha256-witnessed by
+# _main/mutant-tracking-oracle.py, not product source. Excluding it keeps the
+# lint census about code that ships.
+exclude = ["worker/_prefix_audioflag.py"]
