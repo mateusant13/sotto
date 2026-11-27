@@ -1,7 +1,7 @@
 {
  "schema": "revival.goal/v1",
  "created_at": "2026-11-26T20:06:25Z",
- "updated_at": "2026-11-27T01:01:25Z",
+ "updated_at": "2026-11-27T02:11:09Z",
  "status": "active",
  "horizon": "multi-day",
  "statement": "Sotto: YouTube captions in sync (right display at the right time, pause at the right time) and real-time local transcription on the same overlay, with no bugs -- owner: 'i want sotto to be fucking finished and with no bugs'",
@@ -35,7 +35,7 @@
   {
    "id": "ACC-05",
    "text": "Before-vs-after benchmark diff & slider scorecard show verified improvement across all core user journeys",
-   "receipt": null
+   "receipt": "benchmarks/history.jsonl: baseline (d77871d, 20:08:46Z) -> after (a00a363, samples 3, host_cpu_pct 69.4, passed true) comparado com `benchmark_history.py compare --from-label baseline --to-label after` -> ok true, 5 metricas emparelhadas: yt_capture_replay 518,95 -> 289,27 ms (-44,26%), battery_budget FAIL(rc2) -> 184,67 ms PASS, feature_map_gate 2592,68 -> 1735,41 ms (-33,07%), tooling_intent 510,31 -> 239,59 ms (-53,05%), yt_paint_worst 12,133 -> 12,133 ms PASS; bateria GREEN 610 passos 0 falhas (I:\\cc-tmp\\battery-19.out, 1724,99 s, caged cap40); sliders 8/8 set 2026-11-26 overall 73,4"
   }
  ]
 }

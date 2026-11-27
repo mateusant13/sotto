@@ -1032,7 +1032,7 @@ Medido nesta maquina no mesmo comando: **0,36 s solto · 7,24 s em `--cpu 40` ·
 --io very-low`** (170×, mesmo trabalho, mesmo processo). Uma régua de parede sobre uma corrida capada
 não julga o passo — julga o duty cycle da jaula. As regras, todas com o número que as custou:
 
-- **A régua por passo é HÍBRIDA e diz qual usou**: `_main/battery-budget-oracle.py` julga em **CPU**
+- **2026-11-26 · a régua por passo é HÍBRIDA e diz qual usou**: `_main/battery-budget-oracle.py` julga em **CPU**
   cada passo que tem número dos dois lados e em **PAREDE** o resto, imprimindo
   `regua=CPU em N passo(s) ... regua=PAREDE nos outros M`. O token `regua=` só aparece onde aquela
   régua de facto julgou: um `regua=CPU` num caso sem par seria o portão a dizer que mediu o que não
@@ -1063,6 +1063,15 @@ não julga o passo — julga o duty cycle da jaula. As regras, todas com o núme
   `_cache/battery-steps.json`.
 
 Recibo: `_main/receipt-20261126-ruler-hybrid-and-ratio-bar.md`.
+
+- **2026-11-26 · um bloco novo neste ficheiro leva a data DENTRO do próprio bloco.** A secção acima
+  nasceu com `2026-11-26` só no título e o `_main/claims-date-oracle.py` ficou vermelho com **4
+  afirmações sem data** — e, com a *cópia intacta* já falhando, o braço negativo (`--neg-arm`) devolveu
+  `COPY-BROKEN`/`NO-VERDICT` rc 2 nas seis mutações: o controlo não pode julgar um mutante sobre um
+  ficheiro que já está vermelho. O bloco é a corrida de linhas não vazias entre linhas em branco; um
+  título separado por uma linha em branco não data o bloco que vem depois. A cura é a data na primeira
+  `- **2026-11-26 · ...**` do bloco, e a prova são as duas direções no mesmo turno:
+  `claims-date` rc 0 (`checks=4 fail=0`) e `--neg-arm` rc 1 com `NEG-ARM PASS mutations=6`.
 
 ## UM LIMITE DE MEDICAO LARGA UM INSTRUMENTO, NAO UM PARAGRAFO (2026-11-09)
 

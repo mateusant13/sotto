@@ -60,3 +60,30 @@ roster).
 - Não subiu nenhum tecto para o vermelho passar: o único rebaseline do dia está justificado em
   `notes.rebase` por uma mudança de **unidade** (parede → CPU, 0,36 s contra 62,12 s para o mesmo
   comando), e os 15 passos aceites por `--accept-growth` estão nomeados um a um.
+
+## 7. `benchmark_history.py --selftest` media o escalonador (achado pela corrida #17)
+
+`benchmark-selftest=1` na #17 com `AssertionError` na linha 493 do script **canónico**
+(`C:\Users\Administrador\.agents\skills\project-revival\scripts\benchmark_history.py`) e
+`PASS (5 arms)` solto na mesma árvore. A causa é o fixture do próprio `_selftest`: a métrica
+`basic.fast_wall` (`samples: 2`, `python -c print('ok')`, `ceiling: 5000`) é comparada entre `baseline`
+e `after` com tolerância de 25 % e piso de ruído de **250 ms**, e o mesmo spawn custa ~60 ms solto e
+~1,5 s capado — o `after` "regredia" 20× sem nada ter degradado.
+
+Correção primeiro no script canónico (não num fork): `wall_ms_noise_floor_ms` do fixture `250.0 →
+60000.0`, com o porquê no ficheiro. Provado nas duas direções: solto `PASS (5 arms)` rc 0 (3,5–4,1 s);
+dentro de `python -m watcher run --cpu 40 --io very-low` `PASS (5 arms)` rc 0 (total 6,7 s, wrapper cpu
+0,30 s); `ops 80` continua a reprovar (rc 1) e `ops 30` a passar.
+
+**A versão que fica é a do dono do script, e é melhor do que a minha** (medido 2026-11-26 22:14,
+depois do DM): o watcher trocou o meu piso global por um piso **por métrica**
+(`"min_delta": 60000.0` dentro de `basic.fast_wall`, com o comentário a citar
+`dm-58532a83aadaca0abf6c`), que é mais estreito do que o meu -- só a métrica medida pelo relógio fica
+isenta, o resto do fixture continua com o piso de 250 ms. O ficheiro canónico é dele; não mantenho
+variante minha.
+
+**Entrega ao dono do script**: `herdr agent list` mostrou que **`w12:p1N` já não existe** na roster (é
+recusa, não tentativa — o `herdr-dm.py` devolveu `delivery: unsent`), pelo que o DM foi para o pane vivo
+do watcher `w12:p1H`: `delivery: unproven` → `submitted: null` → `herdr agent send-keys w12:p1H Enter`
+→ o pane passou a `Inspecting the repo copy of benchmark_history`. Registo:
+`I:\!watcher\state\herdr-inbox\dm-58532a83aadaca0abf6c.md`.
