@@ -360,7 +360,7 @@ def main(argv: list[str] | None = None) -> int:
         summary = f"gate PASS {len(results)}/{len(results)} stages in {wall_ms}ms rc=0"
     else:
         bad = next(r["stage"] for r in results if r["verdict"] == "REFUSED")
-        summary = f"gate REFUSED {bad} in {wall_ms}ms rc={rc}"
+        summary = f"gate {verdict} {bad} in {wall_ms}ms rc={rc}"
     print(summary, file=sys.stderr if args.json else sys.stdout, flush=True)
     if args.json:
         print(json.dumps({"verdict": verdict, "rc": rc, "wall_ms": wall_ms,
