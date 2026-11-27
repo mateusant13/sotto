@@ -4674,11 +4674,17 @@ REM (`feature_map_sync`: feature nova sem re-sync -> rc 1; `benchmark_history`: 
 REM tecto -> rc 1; `loop_friction_audit`: verify_cmd com rc != 0 -> rc 1). Sem essa prova um
 REM `--gate` verde seria indistinguivel de um gate cego.
 REM Custo medido 2026-11-26 (fora da jaula): feature_map 1,8 s / benchmark 2,6 s / friction 6,4 s.
-set "REVIVAL=C:\Users\Administrador\.agents\skills\project-revival\scripts"
-if exist "%REVIVAL%\feature_map_sync.py" (
-  call :step feature-map-gate 0 "features\features.json;features\INDEX.md;AGENTS.md;%REVIVAL%\feature_map_sync.py" "%OUT%\feature-map-gate.log" python "%REVIVAL%\feature_map_sync.py" --repo . --gate
+REM DOIS DONOS, DOIS CAMINHOS (medido 2026-11-26): o `benchmark_history.py` canonico passou a
+REM viver em `I:\!watcher\scripts` (27054 B, `effective_floor` presente, `--selftest` PASS 5,0 s
+REM caged e `run --gate` PASS 22,9 s) e a copia da skill (28589 B) NAO tem essa cura; os outros
+REM dois scripts so existem na skill. Uma variavel por copia mantem os quatro portoes vivos e
+REM deixa a cura do dono da frota entrar no benchmark.
+set "REVIVAL=I:\!watcher\scripts"
+set "REVIVAL_SKILLS=C:\Users\Administrador\.agents\skills\project-revival\scripts"
+if exist "%REVIVAL_SKILLS%\feature_map_sync.py" (
+  call :step feature-map-gate 0 "features\features.json;features\INDEX.md;AGENTS.md;%REVIVAL_SKILLS%\feature_map_sync.py" "%OUT%\feature-map-gate.log" python "%REVIVAL_SKILLS%\feature_map_sync.py" --repo . --gate
   call :record feature-map-gate !STEP_RC!
-  call :step feature-map-selftest 0 "%REVIVAL%\feature_map_sync.py" "%OUT%\feature-map-selftest.log" python "%REVIVAL%\feature_map_sync.py" --selftest
+  call :step feature-map-selftest 0 "%REVIVAL_SKILLS%\feature_map_sync.py" "%OUT%\feature-map-selftest.log" python "%REVIVAL_SKILLS%\feature_map_sync.py" --selftest
   call :record feature-map-selftest !STEP_RC!
 ) else ( call :record feature-map-gate MISSING & call :record feature-map-selftest MISSING )
 if exist "%REVIVAL%\benchmark_history.py" (
@@ -4687,10 +4693,10 @@ if exist "%REVIVAL%\benchmark_history.py" (
   call :step benchmark-selftest 0 "%REVIVAL%\benchmark_history.py" "%OUT%\benchmark-selftest.log" python "%REVIVAL%\benchmark_history.py" --selftest
   call :record benchmark-selftest !STEP_RC!
 ) else ( call :record benchmark-gate MISSING & call :record benchmark-selftest MISSING )
-if exist "%REVIVAL%\loop_friction_audit.py" (
-  call :step friction-gate 0 "revival\FRICTION.json;%REVIVAL%\loop_friction_audit.py" "%OUT%\friction-gate.log" python "%REVIVAL%\loop_friction_audit.py" measure --repo . --gate
+if exist "%REVIVAL_SKILLS%\loop_friction_audit.py" (
+  call :step friction-gate 0 "revival\FRICTION.json;%REVIVAL_SKILLS%\loop_friction_audit.py" "%OUT%\friction-gate.log" python "%REVIVAL_SKILLS%\loop_friction_audit.py" measure --repo . --gate
   call :record friction-gate !STEP_RC!
-  call :step friction-selftest 0 "%REVIVAL%\loop_friction_audit.py" "%OUT%\friction-selftest.log" python "%REVIVAL%\loop_friction_audit.py" --selftest
+  call :step friction-selftest 0 "%REVIVAL_SKILLS%\loop_friction_audit.py" "%OUT%\friction-selftest.log" python "%REVIVAL_SKILLS%\loop_friction_audit.py" --selftest
   call :record friction-selftest !STEP_RC!
 ) else ( call :record friction-gate MISSING & call :record friction-selftest MISSING )
 echo.

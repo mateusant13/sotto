@@ -916,8 +916,9 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
 - **PIN do ficheiro (re-medido 2026-11-26, depois do par `dm-triage` e dos seis passos da
-  `project-revival`):** `_main\_audit-verify-all.cmd` = **452321 B**, **5155 CRLF** / 0 bare LF,
-  sha256 `DA5EF87783A4D05A0E7142E2A8929BBF10345FEE1B2D71255C838740737A6266`.
+  `project-revival`, e da linha `REVIVAL` apontada ao canonico 2026-11-26):**
+  `_main\_audit-verify-all.cmd` = **452874 B**, **5161 CRLF** / 0 bare LF,
+  sha256 `CA7A3E8A4CEE6037D0A9A2702D921EB8EEC088056BF0FD6983EBAEBAF4DB4600`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
