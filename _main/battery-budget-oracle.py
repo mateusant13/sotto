@@ -286,7 +286,30 @@ def load_baseline(path=BASELINE):
     return json.load(io.open(path, encoding='utf-8'))
 
 
-def measure_cpu(rows, policy=None):
+def seed_cpu_history(history, baseline):
+    """Semeia a serie de CPU com as leituras do BASELINE, que sao leituras reais.
+
+    POR QUE ISTO E' NECESSARIO (medido 2026-11-26, corridas #12 e #13 da mesma
+    arvore, mesmo codigo em 210 dos 213 passos): o total de CPU dos passos comuns
+    deu **399,3 s** na #12 e **438,5 s** na #13 -- +9,8 % de ruido puro. Julgar
+    esse total contra `baseline x 1,05` e' julgar uma diferenca menor que a
+    repetibilidade do proprio medidor. O estimador da casa para isto ja' existe e
+    e' o MENOR das ultimas `HISTORY_N` leituras (`_estimate`); o que faltava era o
+    numero do baseline entrar na serie -- ele e' uma medicao como as outras, e sem
+    ele a primeira corrida depois do rebaseline comparava min-de-1 contra ruido.
+    Semear NUNCA afrouxa: o menor valor e' o piso que o ratchet usa.
+    """
+    seeded = 0
+    for name, value in ((baseline or {}).get('per_step_cpu') or {}).items():
+        key = 'cpu::' + name
+        if history.get(key):
+            continue
+        history[key] = [{'ts': 'baseline', 's': round(float(value), 3)}]
+        seeded += 1
+    return seeded
+
+
+def measure_cpu(rows, policy=None, history=None, record=True):
     """O custo de CPU por passo, sob a mesma politica de largada.
 
     POR QUE ESTE NUMERO EXISTE (medido 2026-11-26, nesta maquina): o MESMO
@@ -298,8 +321,33 @@ def measure_cpu(rows, policy=None):
     Devolve `per_step_cpu` (so' os passos que TEM numero) e `total_cpu_s`.
     """
     same = [r for r in rows if (r.get('policy') or None) == (policy or None)]
-    per = {r['name']: round(r['cpu_s'], 3) for r in same if r.get('cpu_s') is not None}
+    per = {}
+    raw = {}
+    for row in same:
+        if row.get('cpu_s') is None:
+            continue
+        name = row['name']
+        now = float(row['cpu_s'])
+        raw[name] = round(now, 3)
+        if history is None:
+            per[name] = round(now, 3)
+            continue
+        # A MESMA JANELA DA PAREDE (`HISTORY_N`), com chave PROPRIA: uma serie que
+        # misturasse segundos de parede com segundos de CPU compararia unidades
+        # diferentes, que e' o defeito que este ficheiro existe para nao ter.
+        key = 'cpu::' + name
+        pairs = list(_hist_pairs(history.get(key)))
+        ts_now = str(row.get('timestamp') or '')
+        if pairs and ts_now and pairs[-1][0] == ts_now:
+            pairs[-1] = (ts_now, now)          # re-julgar o MESMO registo nao duplica
+        else:
+            pairs.append((ts_now, now))
+        pairs = pairs[-HISTORY_N:]
+        if record:
+            history[key] = [{'ts': t, 's': round(v, 3)} for t, v in pairs]
+        per[name] = round(_estimate([v for _, v in pairs]), 3)
     return {'per_step_cpu': per, 'total_cpu_s': round(sum(per.values()), 3),
+            'cpu_raw_s': round(sum(raw.values()), 3),
             'cpu_steps': len(per), 'cpu_missing': len(same) - len(per)}
 
 
@@ -342,49 +390,64 @@ def judge(measured, baseline, target=DEFAULT_TARGET_S, pct=RATCHET_PCT):
                        '-- re-medir o baseline com `--baseline --policy %r --rebase-policy <razao>`'
                        % (baseline.get('policy'), measured.get('policy'),
                           measured.get('policy'))], 0.0
-    # ── A REGUA E' O CPU QUANDO OS DOIS LADOS O TEM ────────────────────────
-    # A parede dentro da jaula da bateria mede o duty cycle da jaula (medido:
-    # 0,36 s solto -> 62,1 s caged, 170x, mesmo trabalho). O CPU do filho e' o
-    # que o passo CUSTA. Sem numero de um dos lados a regua volta a parede e o
-    # `why` diz qual foi usada -- um portao que troca de unidade em silencio
-    # seria pior que um portao vermelho.
     base_cpu = (baseline or {}).get('per_step_cpu') or {}
     now_cpu = measured.get('per_step_cpu') or {}
-    ruler = 'wall'
-    if base_cpu and now_cpu:
-        ruler = 'cpu'
-        ceiling = float(baseline.get('total_cpu_s') or sum(base_cpu.values())) * pct
-        common = [n for n in now_cpu if n in base_cpu]
-        judged = round(sum(now_cpu[n] for n in common), 3)
-        reasons.append('regua=CPU (%d passo(s) com numero dos dois lados; %d medido(s) '
-                       'aqui sem par no baseline)' % (len(common), len(now_cpu) - len(common)))
-        if judged > ceiling:
-            ok = False
-            reasons.append('total de CPU dos %d passos DO BASELINE %.1fs acima do tecto '
-                           '%.1fs (baseline %.1fs x %.2f)'
-                           % (len(common), judged, ceiling,
-                              float(baseline.get('total_cpu_s') or sum(base_cpu.values())), pct))
-        grew = []
-        for name, secs in sorted(now_cpu.items()):
-            before = base_cpu.get(name)
+    base_wall = (baseline or {}).get('per_step') or {}
+    now_wall = measured.get('per_step') or {}
+    pairs = [n for n in now_cpu if n in base_cpu]
+    # A REGUA POR PASSO E' O CPU QUANDO HA' NUMERO DOS DOIS LADOS, E A PAREDE NO
+    # RESTO (medido 2026-11-26, nesta maquina): o MESMO comando custou 0,36 s solto
+    # e 62,12 s dentro de `--cpu 40 --io very-low` -- 170x, mesmo CPU. Uma regua so'
+    # de parede julga a jaula; uma regua so' de CPU deixaria ~65 % dos passos sem
+    # numero (o cache nunca os volta a correr). As duas, cada uma onde existe o
+    # par, e a linha diz QUANTOS ficaram em cada regua: nada muda de unidade em
+    # silencio.
+    # O TOKEN `regua=` E' O QUE UM LEITOR (E AS ARMS C1-C4) LE. Ele so' aparece
+    # quando AQUELA regua de facto julgou algum passo: um `regua=CPU` num caso sem
+    # nenhum par seria o portao a dizer que mediu o que nao mediu.
+    if pairs:
+        reasons.append('regua=CPU em %d passo(s) com par nos dois lados; '
+                       'regua=PAREDE nos outros %d'
+                       % (len(pairs), len([n for n in now_wall if n not in pairs])))
+    else:
+        reasons.append('regua=PAREDE em todos os %d passo(s) medidos (sem par de '
+                       'CPU dos dois lados)' % len(now_wall))
+    grew = []
+    for name, secs_wall in sorted(now_wall.items()):
+        if name in base_cpu and name in now_cpu:
+            before, secs, unit = base_cpu[name], now_cpu[name], 'CPU '
+        else:
+            before = base_wall.get(name)
             if not before or before <= 0:
                 continue
-            if max(before, secs) < PER_STEP_FLOOR_S:
-                continue
-            if secs > before * PER_STEP_PCT and (secs - before) > PER_STEP_SLACK_S:
-                grew.append('%s %.1fs -> %.1fs (baseline %.1fs x %.2f = %.1fs)'
-                            % (name, before, secs, before, PER_STEP_PCT, before * PER_STEP_PCT))
-        if grew:
-            ok = False
-            reasons.append('passo(s) que engordaram em CPU alem do ratchet: %s'
-                           % ' | '.join(grew))
-        gap = round(measured['total_s'] - target, 1)
-        return ok, reasons, gap
-    reasons.append('regua=PAREDE (sem cpu_s dos dois lados: baseline=%d, corrida=%d)'
-                   % (len(base_cpu), len(now_cpu)))
+            secs, unit = secs_wall, ''
+        if before <= 0:
+            continue
+        if max(before, secs) < PER_STEP_FLOOR_S:
+            continue
+        if secs > before * PER_STEP_PCT and (secs - before) > PER_STEP_SLACK_S:
+            grew.append('%s%s %.1fs -> %.1fs (baseline %.1fs x %.2f = %.1fs)'
+                        % (unit, name, before, secs, before, PER_STEP_PCT,
+                           before * PER_STEP_PCT))
+    if grew:
+        ok = False
+        reasons.append('passo(s) que engordaram alem do ratchet: %s' % ' | '.join(grew))
     ceiling = float(baseline['total_s']) * pct
     inter, new_s = _intersection_total(measured, baseline)
     judged = measured['total_s'] if inter is None else inter
+    if pairs:
+        base_cpu_total = float(baseline.get('total_cpu_s') or sum(base_cpu.values()))
+        ceiling_cpu = base_cpu_total * pct
+        judged_cpu = round(sum(now_cpu[n] for n in pairs), 3)
+        reasons.append('total: CPU %.1fs dos %d passos DO BASELINE vs tecto %.1fs '
+                       '(a parede da corrida, %.1fs, fica publicada como contexto)'
+                       % (judged_cpu, len(pairs), ceiling_cpu, measured['total_s']))
+        if judged_cpu > ceiling_cpu:
+            ok = False
+            reasons.append('total de CPU %.1fs acima do tecto %.1fs (baseline %.1fs x %.2f)'
+                           % (judged_cpu, ceiling_cpu, base_cpu_total, pct))
+        gap = round(measured['total_s'] - target, 1)
+        return ok, reasons, gap
     if judged > ceiling:
         ok = False
         if inter is None:
@@ -409,37 +472,6 @@ def judge(measured, baseline, target=DEFAULT_TARGET_S, pct=RATCHET_PCT):
         reasons.append('passo(s) acima do prazo sem divida declarada: %s'
                        % ','.join(new_over))
     gone = sorted(declared - set(measured['over_deadline']))
-    # O RATCHET POR PASSO, que e' o que este portao devia ter desde o inicio.
-    # MEDIDO 2026-11-08: o baseline era `total_s=5801,2` (de 2026-11-05) e a
-    # corrida verde media `2102,0` em 370 passos -- o tecto de 6 091 s deixava
-    # passar uma regressao de **2,9x** em silencio, porque UM numero somado
-    # esconde o passo que engordou e um passo pesado que sai da populacao baixa
-    # o total. A comparacao passo a passo nao tem esse buraco e NOMEIA o culpado.
-    # Passo novo nao entra por aqui: o `new_over` acima ja' o julga pelo prazo.
-    per_base = baseline.get('per_step') or {}
-    per_now = measured.get('per_step') or {}
-    if per_base:
-        grew = []
-        for name, secs in sorted(per_now.items()):
-            before = per_base.get(name)
-            if before is None or before <= 0:
-                continue
-            # O PISO E' SOBRE O QUE ESTA' SENDO JULGADO, NUNCA UMA ISENCAO: um
-            # passo que NASCEU pequeno e engordou para 200 s passa a ser julgado
-            # (medido nesta sessao: com `before < PISO: continue`, 4,9 s -> 200 s
-            # ficava invisivel para o ratchet por passo, abaixo do prazo e abaixo
-            # do tecto do total). Quem nunca chega ao piso nem ao prazo nem ao
-            # total nao interessa a ninguem.
-            if max(before, secs) < PER_STEP_FLOOR_S:
-                continue
-            if secs > before * PER_STEP_PCT and (secs - before) > PER_STEP_SLACK_S:
-                grew.append('%s %.1fs -> %.1fs (baseline %.1fs x %.2f = %.1fs)'
-                            % (name, before, secs, before, PER_STEP_PCT,
-                               before * PER_STEP_PCT))
-        if grew:
-            ok = False
-            reasons.append('passo(s) que engordaram alem do ratchet: %s'
-                           % ' | '.join(grew))
     gap = round(measured['total_s'] - target, 1)
     return ok, reasons, gap
 
@@ -1165,7 +1197,11 @@ def main(argv):
                   ' resultado esperado de uma mudanca deliberada)')
             return 1
         notes = dict(old.get('notes') or {})
-        if old_policy != policy and rebase:
+        # A RAZAO FICA GRAVADA SEMPRE QUE E' DITA. Antes so' entrava com mudanca de
+        # politica, e um rebaseline que admitia passos com `--accept-growth` (a
+        # regua por passo passou a ser CPU onde ha' par) ficava sem a frase que
+        # explica o que ele aceitou -- o ratchet assinava o aumento em silencio.
+        if rebase:
             notes['rebase'] = ('politica %r -> %r em %s: %s'
                               % (old_policy, policy,
                                  __import__('datetime').date.today().isoformat(), rebase))
@@ -1201,13 +1237,18 @@ def main(argv):
         print(why_refused)
         return 2
     history = load_history()
+    seeded = seed_cpu_history(history, load_baseline())
+    if seeded:
+        print('CPU-SERIES semeada com %d leitura(s) do baseline (o piso que o '
+              'ratchet usa)' % seeded)
     rows = smooth(rows_raw, history, policy, deadline_s=deadline())
     save_history(history)
     for name, value in KILL_SAMPLES:
         print('KILL-SAMPLE dropped step=%s s=%.3f prazo=%.0fs -- o registo era o '
               'CORTE, nao o custo do passo' % (name, value, deadline()))
     measured = measure(rows, deadline(), policy)
-    measured.update(measure_cpu(rows_raw, policy))
+    measured.update(measure_cpu(rows_raw, policy, history))
+    save_history(history)
     if not measured['steps']:
         # Populacao VAZIA sob esta politica: a comparacao nao existe, e um PASS
         # aqui seria o verde que nao mediu nada (a lei da casa para populacao zero).

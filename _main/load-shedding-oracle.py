@@ -1783,13 +1783,29 @@ def arms_load(worker_path: Path, tmp: Path) -> None:
     s2.add_audio(np.full(1600, 0.1, dtype=np.float32))
     for _i in range(9):
         s2.add_audio(np.full(1600, 0.1, dtype=np.float32))
-    s2.maybe_kick()
-    _settle(s2, "ARM 10 -- a recarga apos a largada")
+    # O LOTE NAO NASCE NO MESMO TIQUE DO `maybe_kick` (medido 2026-11-26 na corrida
+    # #12 da bateria: este arm deu `loads=1` e `out=0` com a arvore identica, e
+    # passou 257/257 solto). `_settle` junta o lote EM CURSO -- e devolve True na
+    # hora quando o lote ainda nao COMECOU, porque nao ha nada para juntar. O arm
+    # lia um instantaneo do escalonador, nao o contrato. A forma certa e a espera
+    # limitada PELO CONTRATO: pede, junta, e volta a pedir ate o motor ter
+    # recarregado e o lote ter fechado -- com prazo declarado, e prazo nenhum vira
+    # isencao (estourar continua a reprovar pelo que o contrato nao fez).
+    import time as _time
+    _deadline = _time.monotonic() + JOIN_CAP_S
+    while _time.monotonic() < _deadline:
+        _settle(s2, "ARM 10 -- a recarga apos a largada")
+        _now = s2._pending_counts()
+        if eng2.loads >= 2 and _now["blocks_out"] >= _now["blocks_in"]:
+            break
+        s2.maybe_kick()
+        _time.sleep(0.05)
     add(eng2.loads >= 2, "e RECARREGOU sozinho no lote seguinte",
         f"loads={eng2.loads}")
-    add(s2._pending_counts()["blocks_in"] == s2._pending_counts()["blocks_out"],
+    _counts = s2._pending_counts()
+    add(_counts["blocks_in"] == _counts["blocks_out"],
         "as 10 linhas de audio desse lote tambem entraram e sairam",
-        f"in={s2._pending_counts()['blocks_in']} out={s2._pending_counts()['blocks_out']}")
+        f"in={_counts['blocks_in']} out={_counts['blocks_out']}")
 
 
     # ARM 12 -- A VISAO NAO E' PRESSAO (ordem do dono, 2026-11-03, verbatim:

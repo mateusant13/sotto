@@ -82,7 +82,14 @@ import overlay_paint as op  # noqa: E402
 HIT_P95_MAX_MS = 2.0
 #: Um hit tem de ser >= 20x mais barato que um raster novo, medido na MESMA
 #: corrida. E' o limite que sobrevive a um tecto de CPU (ver _time_calls).
-HIT_RATIO_MIN = 20.0
+# O PISO DO RATIO VEM DE UMA MEDICAO, NAO DE UM GOSTO (2026-11-26): cache a
+# servir, solto = 76,1x (hit p95 0,110 ms contra miss p50 8,36 ms); o MESMO codigo
+# dentro da jaula de 40% de CPU (corrida #11) = 14,1x, porque o tecto estica os dois
+# lados e comprime a razao pela cauda do hit. O mutante que constroi e nunca serve
+# mede o proprio hit em 6,24 ms p50 -- ~1,1x o miss. O piso de 8,0 fica acima do
+# mutante com folga de 7x e abaixo da corrida capada com folga de 1,75x: nem o
+# defeito passa, nem a jaula que ja' existe vira vermelho por ser jaula.
+HIT_RATIO_MIN = 8.0
 FULL_SWEEP_BASES = 12
 STRIDE = 15          # 18 valores de alfa nas bases fora da varredura cheia
 
@@ -555,13 +562,48 @@ def _neg_arm(head_mod, bases, cost_runs=40):
         _r, p50, p95, _mx = _time_calls(fn, cost_runs)
         return p50, p95
 
+    def own_ratio(mod, cost_runs_hit=200):
+        """O RATIO DO PROPRIO MUTANTE: miss (limpa e rasteriza) contra hit.
+
+        Tem de ser medido AQUI e nao herdado do `_arm_a2`: o mutante `lookup-off`
+        constroi o raster e nunca o serve, logo o caminho barato dele E' o caro --
+        e o unico braco que o apanha dentro de uma corrida capada, onde o limite
+        absoluto responde CANNOT-MEASURE (medido 2026-11-26: a corrida #11 deixou
+        este mutante passar por essa porta).
+        """
+        base = _cost_base()
+        cur, prev, w, h, _s = mod._layout(base['text'], base['prev'], base['scale'],
+                                         base['work'], base['theme'],
+                                         rows=base['rows'])
+
+        def fn():
+            return mod._premultiplied_bitmap(
+                cur, prev, w, h, base['scale'], base['theme'], [255] * len(cur),
+                roll=base['roll'])
+
+        def miss_once():
+            mod._paint_cache_clear()
+            return fn()
+
+        miss = _time_calls(miss_once, 12)
+        mod._paint_cache_clear()
+        _time_calls(fn, 1)
+        _h, _p50, p95, _mx = _time_calls(fn, cost_runs_hit)
+        miss_p50 = statistics.median(miss[0])
+        return (miss_p50 / p95) if p95 > 0 else float('inf'), miss_p50, p95
+
     caught = {}
     mod1 = _load_source(_mutate(src, MUT1, 'lookup-off'), 'overlay_paint_mut1')
     red1 = pixel_red(mod1)
     p50, p95 = cost_ms(mod1)
-    caught['lookup-off'] = (p95 > HIT_P95_MAX_MS,
-                            'pixel_red=%d hit_ms p50=%.2f p95=%.2f (portao %.1f)'
-                            % (len(red1), p50, p95, HIT_P95_MAX_MS))
+    m_ratio, m_miss_p50, m_hit_p95 = own_ratio(mod1)
+    caught['lookup-off'] = (
+        (p95 > HIT_P95_MAX_MS) or (m_ratio < HIT_RATIO_MIN),
+        'pixel_red=%d hit_ms p50=%.2f p95=%.2f (portao absoluto %.1f, julgado so '
+        'quando a corrida NAO esta capada) | RATIO proprio=%.2fx < %.1fx '
+        '(miss p50=%.2f hit p95=%.2f) -- este braco o apanha dentro E fora da jaula'
+        % (len(red1), p50, p95, HIT_P95_MAX_MS, m_ratio, HIT_RATIO_MIN,
+           m_miss_p50, m_hit_p95))
     print('  MUTANTE lookup-off: %s' % caught['lookup-off'][1], flush=True)
 
     mod2 = _load_source(_mutate(src, MUT2, 'roll-off-key'), 'overlay_paint_mut2')
