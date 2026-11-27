@@ -1,13 +1,13 @@
 # Macro Feature Architecture — sotto
 
-> Auto-synced from Git (`871892d`) at `2026-11-27T20:56:35Z` by `feature_map_sync.py`.
+> Auto-synced from Git (`1d58d61`) at `2026-11-27T22:47:42Z` by `feature_map_sync.py`.
 > Refine `how_it_works`, `inputs`, `outputs`, `interlinks`, `verify_cmd`, and `metric_ids` in `features/features.json` (set `"curated": true`) — re-syncs preserve curated contracts while keeping file lists & commits live.
 
 ## 1. Macro Feature Matrix
 
 | Feature | Files | Commits | Inputs | Outputs | Interlinks | How It Works |
 |---|---:|---:|---|---|---|---|
-| `_main` | 1339 | 385 | Tracked source tree under `_main/`, `app/` and `worker/`; Battery step timings in `_cache/battery-steps.json` and `_main/battery-budget-baseline.json`; Oracle flags such as `--neg-arm` and `--record-step` | Per-oracle PASS/FAIL verdicts and rc on stdout; Step logs under `_main/_audit-verify/`; Ratchet updates in `_main/tooling-intent-baseline.json` | app/panel, app/webview, worker, discord | _main is the verification workshop rather than shipped runtime: `_main/_audit-verify-all.cmd` runs the aggregated battery and records each s |
+| `_main` | 1340 | 384 | Tracked source tree under `_main/`, `app/` and `worker/`; Battery step timings in `_cache/battery-steps.json` and `_main/battery-budget-baseline.json`; Oracle flags such as `--neg-arm` and `--record-step` | Per-oracle PASS/FAIL verdicts and rc on stdout; Step logs under `_main/_audit-verify/`; Ratchet updates in `_main/tooling-intent-baseline.json` | app/panel, app/webview, worker, discord | _main is the verification workshop rather than shipped runtime: `_main/_audit-verify-all.cmd` runs the aggregated battery and records each s |
 | `_recovered` | 2 | 0 | Frozen Python snapshots committed during the 2026-10-23 recovery; Diff receipts in `_main/RECOVERY.md` and `_main/INTEGRATION-11.md` | Reconstructable diff between pre-loss HEAD and recovered worker; No runtime JSONL and no app state | - | `_recovered/worker_fab495ac.py` is the 4593-line snapshot recovered from the checkout that destroyed worker edits; `_recovered/worker_186c96 |
 | `_tools` | 4 | 0 | Read-only URI to C:/Users/Administrador/.minimax/v2/sqlite/runtime-state.sqlite; UTC cutoff and MAX timestamps from `_main/CRON-TRUTH.md` | POPULATION/WINDOW counts and pass-by-pass verdicts on stdout; Cron-silence evidence cited in `_main/CRON-VERDICT.md` | - | All four files are read-only SQLite passes over the same agent runtime store: `_tools/cron-restore-probe.py` counts rows after the 13:11Z cu |
 | `app/_legacy-electron` | 11 | 1 | Child-process stdout JSONL (captions and statuses); Renderer IPC messages such as hide, toggle, pointer and getInfo | Captions and statuses delivered to the panel receiver and main-process caption log; Bridge-selftest rc 0/3 with per-step receipts | _main, app/panel, worker | `app/_legacy-electron/main.js` is the retired Electron main process and says so explicitly: the live window is the pywebview shell in `app/w |
@@ -19,15 +19,15 @@
 | `discord` | 4 | 0 | DISCORD_BOT_TOKEN plus guild and voice-channel ids; Raw Opus packets tagged by SSRC from @discordjs/voice | 16 kHz mono PCM segments and packet JSONL under `out/<user_id>/`; Decoder-count and capture receipts | _main, worker | `discord/src/index.js` is the bot CLI: it takes `--guild` and `--channel`, reads `DISCORD_BOT_TOKEN` and calls `capture()` in `discord/src/l |
 | `probe` | 7 | 4 | Sounddevice device list and a 2 s capture window; Synthetic WAV for transcription; Agent session JSONL tree under C:/Users/Administrador/.minimax/v2/sessions | JSON evidence for loopback and ASR availability on stdout; Logs such as `probe/tap.log` and `probe/load.log` | - | `probe/sotto_probe.py` is the two-question probe: it enumerates sounddevice inputs, captures a short loopback window and transcribes a synth |
 | `root-entrypoints` | 2 | 0 | Read-only URI to C:/Users/Administrador/.minimax/v2/sqlite/runtime-state.sqlite; Electron runtime plus `_main/flicker-dom-oracle.js` | Schema and queue census on stdout; Flicker measurement results | _main, _tools, app/_legacy-electron | `_probe_schema.py` opens the minimax runtime-state SQLite read-only and prints schemas, a queue census and reference rows for queue, message |
-| `scripts` | 5 | 2 | AGENTS.md and installed skill bytes; Worker WORKER_STATS line or a state=done JSON payload | BATTERY-VERDICT task-resolver-gate PASS/FAIL with rc 0/1/2; AGC RED/GREEN verdict with gain evidence | _main, worker | `scripts/task-resolver-gate.py` enforces the task-resolver mandate with checks for the AGENTS.md route, skill version and digest, gate-boots |
+| `scripts` | 6 | 8 | AGENTS.md and installed skill bytes; Worker WORKER_STATS line or a state=done JSON payload | BATTERY-VERDICT task-resolver-gate PASS/FAIL with rc 0/1/2; AGC RED/GREEN verdict with gain evidence | _main, worker | `scripts/task-resolver-gate.py` enforces the task-resolver mandate with checks for the AGENTS.md route, skill version and digest, gate-boots |
 | `tools` | 2 | 0 | `bend_core/LAWS.bend` and `PROOF.bend`; Kernel (`lean --version`), translator (`bend version`) and WSL environment | Per-law verdict on stdout with rc; Append-only proof ledger JSONL rows | bend_core, _main | `tools/bend_verify.sh` is the law gate: it runs `bend PROOF.bend --verdict` inside WSL `ubuntu-bend`, checks that LAWS.bend alone still repo |
-| `worker` | 44 | 55 | WASAPI loopback or microphone PCM audio; Engine and config flags from `worker/config.json`; Optional per-speaker PCM captured by `discord/` | Flushed caption and status JSONL lines on stdout; WORKER_STATS counters and audio ring state | _main, app/_legacy-electron, app/webview, app/panel | `worker/sotto_worker.py` is the live ASR worker: sounddevice loopback capture into a ring, resample, ONNX streaming features, RNN-T decode,  |
+| `worker` | 44 | 56 | WASAPI loopback or microphone PCM audio; Engine and config flags from `worker/config.json`; Optional per-speaker PCM captured by `discord/` | Flushed caption and status JSONL lines on stdout; WORKER_STATS counters and audio ring state | _main, app/_legacy-electron, app/webview, app/panel | `worker/sotto_worker.py` is the live ASR worker: sounddevice loopback capture into a ring, resample, ONNX streaming features, RNN-T decode,  |
 
 ## 2. Subsystem Interconnection Graph
 
 ```mermaid
 flowchart LR
-  _main["_main (1339 files)"]
+  _main["_main (1340 files)"]
   _recovered["_recovered (2 files)"]
   _tools["_tools (4 files)"]
   app__legacy_electron["app/_legacy-electron (11 files)"]
@@ -39,7 +39,7 @@ flowchart LR
   discord["discord (4 files)"]
   probe["probe (7 files)"]
   root_entrypoints["root-entrypoints (2 files)"]
-  scripts["scripts (5 files)"]
+  scripts["scripts (6 files)"]
   tools["tools (2 files)"]
   worker["worker (44 files)"]
   _main --> app_panel
@@ -86,7 +86,7 @@ flowchart LR
 - **Interlinks:** app/panel, app/webview, worker, discord, probe, scripts, tools
 - **Verify command:** `python _main/battery-budget-oracle.py`
 - **Metric budgets:** e2e.battery_budget_gate_ms, subsystem.tooling_intent_ms
-- **Key files (1339):** `_main/_47bb_main.cpp`, `_main/_agc_calib.py`, `_main/_agc_live.py`, `_main/_agents-md-rewrap.py`, `_main/_altc_delivery_probe.py`, `_main/_altc_thread_owner.py`, `_main/_anim-cost2.js`, `_main/_anim-cost2.py`, `_main/_anim-timeline-diff.py`, `_main/_anim-visual.js`, `_main/_app-census.py`, `_main/_app-drive.py` ...
+- **Key files (1340):** `_main/_47bb_main.cpp`, `_main/_agc_calib.py`, `_main/_agc_live.py`, `_main/_agents-md-rewrap.py`, `_main/_altc_delivery_probe.py`, `_main/_altc_thread_owner.py`, `_main/_anim-cost2.js`, `_main/_anim-cost2.py`, `_main/_anim-timeline-diff.py`, `_main/_anim-visual.js`, `_main/_app-census.py`, `_main/_app-drive.py` ...
 
 ### `_recovered` —  Recovered
 - **How it works:** `_recovered/worker_fab495ac.py` is the 4593-line snapshot recovered from the checkout that destroyed worker edits; `_recovered/worker_186c969e_HEAD.py` is the 4511-line pre-loss HEAD baseline kept so the diff is reproducible. Both are the same system-audio-in / JSONL-captions-out worker now maintained as `worker/sotto_worker.py`, and both are frozen: no shell imports or spawns them. `_main/RECOVERY.md` records the hash, size and what was deliberately not committed.
@@ -194,7 +194,7 @@ flowchart LR
 - **Interlinks:** _main, worker
 - **Verify command:** `python scripts/task-resolver-gate.py`
 - **Metric budgets:** UNSET — bind in benchmarks/budgets.json
-- **Key files (5):** `scripts/agc-gate.sh`, `scripts/check-bug-hunt-wiring.py`, `scripts/gate.py`, `scripts/task-resolver-gate.py`, `scripts/test_task_resolver_gate.py`
+- **Key files (6):** `scripts/agc-gate.sh`, `scripts/check-bug-hunt-wiring.py`, `scripts/gate.py`, `scripts/task-resolver-gate.py`, `scripts/test_gate.py`, `scripts/test_task_resolver_gate.py`
 
 ### `tools` — Tools
 - **How it works:** `tools/bend_verify.sh` is the law gate: it runs `bend PROOF.bend --verdict` inside WSL `ubuntu-bend`, checks that LAWS.bend alone still reports open TODOs, and asserts each law has a proof. `tools/bend_proof_ledger.py` is the append-only ledger: one JSONL line per run records hashes of kernel, translator, import closure, gate checks and environment so a green result can be tied to its toolchain.
@@ -268,3 +268,7 @@ flowchart LR
 | `never-expiring-skip-gates-hid-broken-checks` | Oracles gate a verdict behind a precondition that, when false, prints SKIPPED forever: a permanently broken ch | 1P / 0F | **A named hole is not a defect; a silent skip is. The distinction is the whole finding.** -> Bare SKIPPED verdict lines 38 -> 26. RED demos: duplicate cue_t0 rc 1, malformed CAPTION_LAND rc 1, worker-pro | `deepseek-v4.1-flash` / `count_bare_skip_verdicts over _main/*.py; youtube-land-oracle and worker-providers-oracle driven with synthetic logs` |
 | `runcmd-mutant-verdict-raced-a-fixed-budget` | The control stub's fixed alive_after=3.0 s raced the wrapper's 5 s readiness bound and the verdict was read fr | 1P / 0F | **A gate that answers differently on the same input is not a gate; the verdict must come fro** -> Three runs identical: MUTANT-VERDICT PASS with state=before-dead control / state=after-dead mutant; the forced | `deepseek-v4.1-flash` / `_main/run-cmd-exit-oracle.py --mutant-only x3, and a forced-marker mutant` |
 | `object-new-bypasschains-replaced-by-for-test-seams` | Twenty-odd oracles bypassed real constructors with object.__new__, so they exercised an object the product nev | 1P / 0F | **A documented factory is a seam with an owner; a per-oracle object.__new__ is repeated know** -> object_new_bypass 26 -> 1, test_quality_score 85 -> 98. All converted oracles: positive rc 0, --neg-arm rc 1 ( | `deepseek-v4.1-flash` / `the nine converted oracles (positive + --neg-arm) and test_quality_audit.py scan --repo H:/sotto` |
+| `source-grep-gate-instead-of-the-real-path` | An arm that asserts a string is present in the source proves the text exists, not that the code runs: move the | 1P / 0F | **The consumer is the only witness that the wiring is alive.** -> pos rc 0 VERDICT PASS (F3 PASS); --neg-arm rc 1 with 8 regressions red, NEG-ARM shell-consume PASS -- RED as d | `deepseek-v4.1-flash` / `_main/punct-model-oracle.py (positive + --neg-arm)` |
+| `swallowed-rotation-failure-leaves-an-unbounded-log` | except Exception: pass around the cap rotation is not 'the app keeps working': it is a log that grows past its | 1P / 0F | **Never stop the app stays true; never be counted does not.** -> pos rc 0 VERDICT PASS; --neg-arm rc 1 MUTANTS: 2/2 caught, and silent-except IS HEAD's code and goes RED (the  | `deepseek-v4.1-flash` / `_main/log-rotation-oracle.py (3 arms, positive + --neg-arm)` |
+| `unreadable-input-fails-open-instead-of-naming-itself` | A helper that returns None on any exception turns 'I could not read the build id' into 'no filter', so the gat | 1P / 0F | **The 2026-10-30 defect this oracle exists for was reading an old build's number as today's;** -> mutant rc=2 'ALTC-FIRST-CAPTION VERDICT NO-MEASURE (rc=2) why=disk-code-id-unreadable'; real run post-patch rc | `deepseek-v4.1-flash` / `_main/altc-first-caption-oracle.py (mutant with disco forced to None, plus the real run)` |
+| `cache-key-omits-the-source-the-oracle-reads` | A content cache whose deps are a hand-picked subtree reuses a HIT after an edit in a file the oracle reads but | 1P / 0F | **A MISS costs seconds; a false HIT costs the defect the gate existed to catch.** -> n_deps 14 with worker/{sotto_worker,punctuation_model,engine_switch,wasapi_loopback,capture_share}.py present; | `deepseek-v4.1-flash` / `_main/oracle-family-sweep.py deps_for('youtube-sync-oracle.py')` |
