@@ -190,3 +190,15 @@ não dizer nada:
   da shell medir `python _main/shell-thread-budget-oracle.py --update`; a instância do dono
   (pid 53752, criada 11:45:10) é anterior ao código desta sessão, e uma lane não a põe na tela dele.
   Até lá o ratchet está **desarmado**, dito pelo próprio oráculo, não escondido.
+
+## 2026-11-26 — o que a régua de custo e a régua de pintura NÃO medem
+
+|o número|por que ele não é medido|o que fica no lugar|
+|---|---|---|
+|CPU do passo na maioria dos 588|`_cache/battery-steps.json` só ganha `cpu_s` quando o passo **executa**; o cache por conteúdo devolve 373 passos sem correr, logo só **214** têm número dos dois lados|a régua híbrida: CPU onde há par, PAREDE no resto, e a linha diz `regua=CPU em N` / `regua=PAREDE nos outros M` — nunca troca de unidade em silêncio|
+|o total de CPU como número absoluto|duas corridas da MESMA árvore, 210 dos 213 passos com código idêntico, deram **399,3 s** (#12) e **438,5 s** (#13) = **+9,8 % de ruído** contra um tecto de 5 %|o estimador da casa: o **menor** das últimas `HISTORY_N=3` leituras, com a série de CPU semeada pelas leituras do próprio baseline (`cpu::<passo>`)|
+|`paint-cost` A2 como número absoluto dentro da jaula|`hit p95` caiu de 0,110 ms solto para 15,164 ms na jaula (106×) — o limite absoluto mediria o escalonador|`A2 CANNOT-MEASURE why=caged-cpu-cap` **e** o RATIO julgado na mesma corrida (piso 8,0× medido: limpo 52-79×, jaula 14,1×, mutante 0,76×)|
+|o `hit_p95` de um hit REAL na jaula|idem: o número existe mas não é o custo do produto|publicado no `facts=` do PASS, nunca julgado por um tecto de parede sob tecto de CPU|
+|o playback do YouTube numa lane|sem sessão iniciada o player devolve `LOGIN_REQUIRED` e `streamingData` vazio: `readyState` fica 0 e nenhuma cue nasce (medido em 3 perfis)|`CANNOT-MEASURE reason=youtube-login-required`; o que a lane cobre é attach, snapshot, pausa/seek/relógio e o envelope de leitura|
+|a frescura da foto do player no replay offline|o `stamp` nasce no momento da leitura, logo todo fixture gravado é "fresco"|dono único: `_main/yt-pause-disagreement-oracle.py` sobre o log real|
+|o texto da cue sem sessão|26 faixas em 3 vídeos devolveram `200` com **0 bytes**|`CANNOT-MEASURE why=no-caption-segment` — um fixture sem cue nunca vira PASS|

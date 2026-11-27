@@ -1026,6 +1026,44 @@ um **TAB**; um blob binario publica `i/-text` e nao conta como divergente.
 stutter "resolvido" sem pid, fio e linha nao e' um stutter resolvido. Recibo de referencia:
 `_main/receipt-20261108-stutter-caption-tick.md`.
 
+## O CUSTO DO PASSO MEDE-SE EM SEGUNDOS DE CPU; A PAREDE DENTRO DA JAULA MEDE A JAULA (2026-11-26)
+
+Medido nesta maquina no mesmo comando: **0,36 s solto · 7,24 s em `--cpu 40` · 62,12 s em `--cpu 40
+--io very-low`** (170×, mesmo trabalho, mesmo processo). Uma régua de parede sobre uma corrida capada
+não julga o passo — julga o duty cycle da jaula. As regras, todas com o número que as custou:
+
+- **A régua por passo é HÍBRIDA e diz qual usou**: `_main/battery-budget-oracle.py` julga em **CPU**
+  cada passo que tem número dos dois lados e em **PAREDE** o resto, imprimindo
+  `regua=CPU em N passo(s) ... regua=PAREDE nos outros M`. O token `regua=` só aparece onde aquela
+  régua de facto julgou: um `regua=CPU` num caso sem par seria o portão a dizer que mediu o que não
+  mediu (as arms C1–C4 leem esse token, e C4 exige `regua=PAREDE` quando não há par).
+- **A série de CPU usa o MESMO estimador da parede** — o **menor** das últimas `HISTORY_N = 3`
+  leituras (`_cache/battery-budget-history.json`, chave `cpu::<passo>`, semeada com as leituras do
+  próprio baseline). Sem isso a régua de CPU compara min-de-1 contra ruído: a MESMA árvore, 210 dos
+  213 passos com código idêntico, deu **399,3 s (run #12) e 438,5 s (run #13) = +9,8 %** contra um
+  tecto de 5 %. Um tecto mais estreito que a repetibilidade do medidor não é um tecto, é um sorteio.
+- **O total julga a INTERSEÇÃO do baseline** (452 passos comuns 0,90× mais rápidos; 136 novos
+  publicados à parte): um passo novo nunca é regressão, e o tecto não pode ignorar que a bateria cresce.
+- **O limite ABSOLUTO de um número de parede não se julga sob tecto de CPU**: `paint-cost` A2 imprime
+  `CANNOT-MEASURE why=caged-cpu-cap` e mantém o **RATIO** na mesma corrida (`HIT_RATIO_MIN = 8,0`:
+  limpo 52–79×, jaula 14,1×, mutante `lookup-off` 0,76×). E o mutante é julgado pelo **RATIO dele
+  próprio** (`miss_p50 / hit_p95` do módulo mutado), porque sob a jaula o limite absoluto responde
+  `CANNOT-MEASURE` — por essa porta um cache que nunca serve passava.
+- **Um arm que lê uma lista entre dois tiques do produtor não é um arm.** `load-shedding` ARM 10 deu
+  `loads=1 out=0` na jaula e 257/257 solto, na MESMA árvore: `_settle()` junta o lote EM CURSO e
+  devolve `True` quando o lote ainda não começou. A forma correcta é a espera limitada pelo CONTRATO
+  (`JOIN_CAP_S` + re-`maybe_kick` até `loads>=2` e `blocks_out>=blocks_in`), e estourar o prazo
+  continua a reprovar — prazo não vira isenção.
+- **Um prazo de launcher não entrega um veredicto.** Esta sessão matou três corridas assim: a #14
+  morreu no reset do host e escreveu `rc=9020`/`O sistema não pode executar o programa especificado`
+  (falha de spawn da árvore a ser desmontada, não defeito de produto); duas largadas com
+  `DETACHED_PROCESS` correram a bateria inteira com o stdout em **0 bytes**, porque o caminho do
+  `.cmd` escreve na consola herdada. A largada que serve é a que o tool job dá (`cmd /c "...cmd" >
+  f 2>&1`), e o progresso lê-se também por `_main/_audit-verify/*.log` e por
+  `_cache/battery-steps.json`.
+
+Recibo: `_main/receipt-20261126-ruler-hybrid-and-ratio-bar.md`.
+
 ## UM LIMITE DE MEDICAO LARGA UM INSTRUMENTO, NAO UM PARAGRAFO (2026-11-09)
 
 **A LEI, em tres linhas:** (1) um limite de medicao nao fecha o assunto -- ele abre o instrumento

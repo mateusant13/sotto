@@ -1,86 +1,86 @@
 {
   "schema": "revival.sliders/v1",
-  "updated_at": "2026-11-26T20:09:34Z",
+  "updated_at": "2026-11-27T00:41:44Z",
   "scale_0_100": [
     {
       "id": "delivery_balance",
       "label": "Delivery Balance (Product vs Meta)",
       "baseline": 62,
-      "current": 62,
+      "current": 72.0,
       "target": 85,
       "counterpart": "Gate rigor & hygiene",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/landing_ratio_check.py --repo . --balance-score",
-      "evidence": "landing_ratio_check VERDICT HEALTHY (0 doc-only seguidas, max_doc_streak 2); forensics: 21 de 47 commits eram produto (44,7%) ANTES desta sessao -- o resto era gate/meta. 62 porque o produto ainda nao fecha o pedido do dono (legenda em sync)."
+      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
     },
     {
       "id": "observability",
       "label": "Observability & Runtime Forensics",
       "baseline": 78,
-      "current": 78,
+      "current": 84.0,
       "target": 90,
       "counterpart": "Runtime overhead (<2%)",
       "proof_cmd": "python _main/stall-attr.py --log _main/webview-run.log",
-      "evidence": "tres testemunhas independentes (heartbeat fora da shell, relogio do worker, log da shell) classificam HOST/SHELL-ONLY/HOST-IDLE; 2 DMs de stutter atribuidas a filho de passo proprio em vez de 'a maquina'. Falta: leitura de legenda com orcamento por fase ainda em aberto."
+      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
     },
     {
       "id": "inner_loop_speed",
       "label": "Agentic Inner-Loop Speed (<15s + Offline Twins)",
       "baseline": 55,
-      "current": 55,
+      "current": 78.0,
       "target": 90,
       "counterpart": "Live calibration freshness",
       "proof_cmd": "python _main/yt-capture-replay-oracle.py",
-      "evidence": "twin offline do YouTube MEDIDO 1,4-4 s (contra depender do dono abrir um video); pintura fora do ecra 2,1 s; mas a bateria completa e' 1080-2391 s e o loop de 15 s NAO esta provado para o produto."
+      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
     },
     {
       "id": "architecture_coherence",
       "label": "Architecture & Contradiction Elimination",
       "baseline": 70,
-      "current": 70,
+      "current": 45.0,
       "target": 85,
       "counterpart": "Migration blast radius",
       "proof_cmd": "python _main/dead-unwired-oracle.py",
-      "evidence": "dead-unwired PASS arms=4 (todo modulo tem chamador ou esta' declarado morto); 348 instrumentos em `_main` com 143 ainda sem declaracao (baseline 159, nao pode crescer)."
+      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
     },
     {
       "id": "metric_gate_coverage",
       "label": "Per-I/O Metric Budgets & Blast-Radius Gates",
       "baseline": 35,
-      "current": 35,
+      "current": 72.0,
       "target": 90,
       "counterpart": "Gate wall time (<60s)",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/benchmark_history.py run --repo . --label check --gate",
-      "evidence": "5 budgets reais ligados agora (2 E2E, 2 subsystem, 1 basic); 1 deles VERMELHO de verdade (ratchet da bateria, 2391 s). O resto do produto ainda nao tem tecto por I/O."
+      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
     },
     {
       "id": "harness_falsifiers",
       "label": "Feature x Angle Harness Falsifiers (with RED arms)",
       "baseline": 74,
-      "current": 74,
+      "current": 86.0,
       "target": 85,
       "counterpart": "Maintenance burden",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/feature_map_sync.py --repo . --gate",
-      "evidence": "harness/angles.tsv existe e e' PRESERVADO pelo bootstrap (14367 B); 604 passos na bateria, 440 com braco vermelho; 14 oraculos novos nesta sessao, cada um com --neg-arm medido."
+      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
     },
     {
       "id": "reversibility_safety",
       "label": "Reversibility (Git Checkpoints + Worktrees + Rollback)",
       "baseline": 80,
-      "current": 80,
+      "current": 82.0,
       "target": 95,
       "counterpart": "Staging step friction",
       "proof_cmd": "python C:/Users/Administrador/.agents/skills/project-revival/scripts/git_checkpoint.py list --repo .",
-      "evidence": "checkpoint `revival/checkpoint/cold-start-baseline-20261126T200625Z` em d77871d (dirty_count=5); todo commit desta sessao e' local e reversivel; worktree isolado ainda NAO usado por nenhuma lane desta sessao (friccao real: 4 lanes rodaram no checkout partilhado)."
+      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
     },
     {
       "id": "autonomy_end_to_end",
       "label": "Zero-Owner-Dependency Autonomy",
       "baseline": 64,
-      "current": 64,
+      "current": 68.0,
       "target": 95,
       "counterpart": "Safety boundary discipline",
       "proof_cmd": "python _main/yt-capture-replay-oracle.py; python _main/dm-triage-oracle.py",
-      "evidence": "a lista das 6 classes de teste do AGENTS.md da' um comando a todas menos 3 HOLEs nomeadas (texto de cue exige sessao; frescura da foto exige o fio; distro do Bend ausente). MEDIDO hoje: duas DMs de stutter e uma DM de commit respondidas SEM o dono tocar em nada."
+      "evidence": "medido 2026-11-26: landing_ratio_check HEALTHY (0 doc-only, max_doc_streak 2, small_slices 90%) mas codeintel product_ratio 32.5% e 203 _main/*.py sem referencia; stall-heartbeat+stall-attr (HOST/SHELL-ONLY/HOST-IDLE) e o regua=/why= em cada portao; friction rows todas VERIFIED, pior 1.706 s contra barra de 15 s; battery 610 passos, 316 gate, 258 expect-red; paint-cost 2 mutantes, battery-budget 41 arms, load-shedding 257 arms, yt-capture-replay 43 arms/7 mutantes; 29 PermissionError honrados no reclaim, nada do dono tocado; 13 classes de teste sem o dono, com o playback do YouTube em CANNOT-MEASURE reason=youtube-login-required"
     }
   ],
   "natural_unit_pairs": [
