@@ -27,6 +27,7 @@ BRACO NEGATIVO (`--neg-arm`): uma copia deste ficheiro com o limiar em 1e9 -- a
 arm 1 TEM de ficar RED nela, senao o detector so' prova a sua aritmetica.
 """
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -172,10 +173,39 @@ if __name__ == '__main__':
     if a.neg_arm:
         raise SystemExit(neg_arm())
     ok = all(arms().values())
+    real = None
+    # UM LOG AUSENTE NAO E' UMA SERIE VAZIA: `read_log` abriria e rebentaria com
+    # traceback, e um traceback nao diz "nao ha serie para julgar". A ausencia
+    # responde UNKNOWN pelo mesmo caminho que uma serie curta.
+    if a.log and not os.path.exists(a.log):
+        print('SERIE REAL %s: (ausente) -- sem log nao ha serie' % a.log)
+        a.log = None
     if a.log:
         vals, column = read_log(a.log)
         v, s, g, note = judge(vals)
         print('SERIE REAL %s: n=%d column=%s verdict=%s %s'
               % (a.log, len(vals), column, v, note))
-    print('VERDICT:', 'GREEN' if ok else 'RED')
-    raise SystemExit(0 if ok else 1)
+        real = v
+    # MEDIDO 2026-11-27: este `ok` era `all(arms())` -- um AUTOTESTE de quatro series
+    # sinteticas -- e o veredicto sobre a serie REAL era impresso e deitado fora. O
+    # passo `rss-trend` da bateria e' `:record 0`, logo uma fuga de verdade
+    # (`verdict=FLAG`) saia a rc=0 e entrava na contagem como portao verde.
+    # TRES DESFECHOS, e um deles NAO e' verde:
+    #   * as arms falham                  -> RED (o proprio detector esta' quebrado)
+    #   * sem `--log`, ou serie curta     -> UNKNOWN, e a bateria conta-o por `:skipped`
+    #     (`n < MIN_SAMPLES` nunca vira ok -- e' a doutrina do proprio modulo)
+    #   * serie real julgada `FLAG`       -> RED, rc=1, com a coluna e os numeros
+    if not ok:
+        print('VERDICT: RED')
+        raise SystemExit(1)
+    if real is None:
+        print('VERDICT: UNKNOWN -- nenhuma serie real julgada (sem --log)')
+        raise SystemExit(0)
+    if real == 'FLAG':
+        print('VERDICT: RED')
+        raise SystemExit(1)
+    if real != 'ok':
+        print('VERDICT: UNKNOWN')
+        raise SystemExit(0)
+    print('VERDICT: GREEN')
+    raise SystemExit(0)

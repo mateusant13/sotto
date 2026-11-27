@@ -1387,8 +1387,8 @@ REM a shell escreve `BRIDGE_RSS rss_mb=.. blocks=..` uma vez por minuto, e este 
 REM forma: fuga linear (FLAG), aquecimento que assenta (ok), dente de serra (ok) e serie curta
 REM (UNKNOWN -- NUNCA verde). O braco negativo poe o limiar em 1e9 e a arm da fuga tem de cair.
 if exist _main\rss-trend-oracle.py (
-  call :step rss-trend 0 "_main\rss-trend-oracle.py;app\webview\sotto_webview.py" "%OUT%\rss-trend.log" python _main\rss-trend-oracle.py
-  call :record rss-trend !STEP_RC!
+  call :step rss-trend 0 "_main\rss-trend-oracle.py;_main\webview-run.log;app\webview\sotto_webview.py" "%OUT%\rss-trend.log" python _main\rss-trend-oracle.py --log _main\webview-run.log
+  call :skipped rss-trend !STEP_RC! "%OUT%\rss-trend.log" "VERDICT: GREEN" "VERDICT: UNKNOWN"
 ) else ( call :record rss-trend MISSING )
 if exist _main\rss-trend-oracle.py (
   call :step red-as-expected-rss-trend 1 "_main\rss-trend-oracle.py" "%OUT%\rss-trend-neg.log" python _main\rss-trend-oracle.py --neg-arm
@@ -4105,9 +4105,9 @@ call :expectred red-as-expected-boot-profile !STEP_RC! "%OUT%\boot-profile-neg.l
 if exist _main\launch-as-token.py (
 call :step always launch-as-token 0 "_main\launch-as-token.py" "%OUT%\launch-as-token.log" python _main\launch-as-token.py --selftest
 call :skipped launch-as-token !STEP_RC! "%OUT%\launch-as-token.log" "SELFTEST PASS" "VERDICT: SKIPPED"
-call :step always live-code-freshness 0 "_main\live-code-freshness-oracle.py;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\live-code-freshness.log" python _main\live-code-freshness-oracle.py
-call :record live-code-freshness !STEP_RC!
-) else ( call :record live-code-freshness MISSING )
+call :step always live-code-freshness 0 "_main\live-code-freshness-oracle.py;_main\webview-run.log;app\webview\sotto_webview.py;worker\sotto_worker.py" "%OUT%\live-code-freshness.log" python _main\live-code-freshness-oracle.py
+call :skipped live-code-freshness !STEP_RC! "%OUT%\live-code-freshness.log" "LIVE_CODE FRESH" "LIVE_CODE VERDICT: SKIPPED"
+) else ( call :skipped live-code-freshness MISSING "%OUT%\live-code-freshness.log" "LIVE_CODE FRESH" "LIVE_CODE VERDICT: SKIPPED" )
 REM A ETIQUETA TEM DE COBRIR O CODIGO QUE DECIDE O ECRA (2026-11-05, MEDIDO).
 REM `_CODE_ID_FILES` era uma lista CURADA de SETE nomes e `youtube_cdp_source.py` -- o
 REM ficheiro que decide QUAL legenda vai ao ecra -- nao estava nela. Medido nesta sessao:

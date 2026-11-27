@@ -907,8 +907,8 @@ ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um por
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
 - **PIN do ficheiro (re-medido 2026-11-27, depois do par `youtube-sync`):**
-  `_main\_audit-verify-all.cmd` = **459380 B**, **5232 CRLF** / 0 bare LF,
-  sha256 `B756DA272D9744ED41D5149EABC6EE158C8AE54D57865A06CD9A5BE4972DECA4`.
+  `_main\_audit-verify-all.cmd` = **459671 B**, **5232 CRLF** / 0 bare LF,
+  sha256 `0C1561196A177E63EAE7BB3ED13B787BAC2DAB6F6F6A561EB4E2C497DC675C97`.
   (O par entrou porque `youtube-sync-oracle.py` era o UNICO oraculo da familia do
   YouTube fora da bateria -- 56 passos ligados, 0 chamadores -- e por isso a arm
   3.5 dele ficou VERMELHA sem dono, a exigir `window_by_paint` onde o dono mandou

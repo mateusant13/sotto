@@ -607,6 +607,17 @@ def main(argv=None):
         args.log, 'SHELL_STARTUP_STAGE', say=lambda m: print('  ' + m)))
     report(verdict, detail, args.log)
     _record(verdict, detail, args.log)
+    # O PASSO DA BATERIA PRECISA DE UMA PALAVRA QUE DIGA "NAO VERIFIQUEI".
+    # MEDIDO 2026-11-27: o passo era `:record`, que so' conhece rc=0 como verde, e
+    # este oraculo devolve 0 seja qual for o veredicto -- logo `STALE` (o estado
+    # NORMAL depois de qualquer commit: a app carrega o codigo de antes) entrava na
+    # contagem como portao verificado. O `--strict` NAO e' a cura (rc=3/2 tornaria a
+    # bateria vermelha em toda a corrida seguinte a um commit, e um vermelho
+    # permanente nao e' um portao); `:skipped` e', e ele exige uma frase EXCLUSIVA
+    # de "nao verifiquei". `LIVE_CODE FRESH` e' a de "verifiquei"; esta e' a outra, e
+    # as duas nunca podem estar no mesmo log.
+    if verdict != 'FRESH':
+        print('LIVE_CODE VERDICT: SKIPPED -- nao verificado: %s' % verdict)
     if args.strict and verdict != 'FRESH':
         return 3 if verdict == 'STALE' else 2
     return 0
