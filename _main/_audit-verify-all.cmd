@@ -4710,6 +4710,22 @@ if exist "%REVIVAL_SKILLS%\loop_friction_audit.py" (
   call :step friction-selftest 0 "%REVIVAL_SKILLS%\loop_friction_audit.py" "%OUT%\friction-selftest.log" python "%REVIVAL_SKILLS%\loop_friction_audit.py" --selftest
   call :record friction-selftest !STEP_RC!
 ) else ( call :record friction-gate MISSING & call :record friction-selftest MISSING )
+REM A TABELA DE ARTEFACTOS (2026-11-27): a lei das stores diz que um projecto sem
+REM manifesto nao consegue responder o que consome, e o instrumento da frota
+REM (`artifact-manifest.py --gate`) so' reprova OVER (rc 2) e TRUNCATED (rc 3) --
+REM medido hoje: uma familia cujo `roots` nao existe imprime EMPTY e devolve
+REM rc 0, e uma tabela que soma o mesmo byte em duas familias publica um total
+REM que nao existe (1.20 GiB de hardlinks contados duas vezes nesta arvore).
+REM O par e' `_main/artifact-manifest-oracle.py`: 5 arms sobre o payload real
+REM (tabela medida, nenhuma familia vazia, nenhum tecto violado, toda a familia
+REM com producer, soma == total) e o `--neg-arm` conduz 4 mutantes, um por arm
+REM que pode ficar vermelho. Custo medido: 1,0 s o positivo, 2,5 s o negativo.
+if exist _main\artifact-manifest-oracle.py (
+  call :step artifact-manifest 0 "_main\artifact-manifest-oracle.py;.artifacts.toml" "%OUT%\artifact-manifest.log" python _main\artifact-manifest-oracle.py
+  call :record artifact-manifest !STEP_RC!
+  call :step red-as-expected-artifact-manifest 1 "_main\artifact-manifest-oracle.py" "%OUT%\artifact-manifest-neg.log" python _main\artifact-manifest-oracle.py --neg-arm
+  call :expectred red-as-expected-artifact-manifest !STEP_RC! "%OUT%\artifact-manifest-neg.log" "NEG-ARM PASS"
+) else ( call :record artifact-manifest MISSING & call :expectred red-as-expected-artifact-manifest MISSING "%OUT%\artifact-manifest-neg.log" "NEG-ARM PASS" )
 echo.
 echo =============== BATTERY SUMMARY ===============
 echo steps    : !N!   gate=!GATES!  control=!CTRLS!  skipped=!SKIPN!  expect-red=!REDS!  missing=!MISSINGN!  cached=!CACHEDN!

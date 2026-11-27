@@ -1,0 +1,132 @@
+# `.artifacts.toml` — o que o Sotto escreve, medido em famílias
+#
+# Ordem do dono (2026-11-24), e ela é o contrato deste ficheiro: uma store é
+# uma cache com retenção, nunca um despejo. Cada família abaixo declara a raiz,
+# o produtor, o teto de bytes e a regra de retenção. O instrumento é
+# `python I:/!watcher/tools/artifact-manifest.py --project H:/sotto [--gate]`
+# (rc 0 dentro, rc 2 OVER, rc 3 TRUNCATED, rc 5 sem manifesto) e a tabela é
+# medida, nunca estimada.
+#
+# MEDIDO 2026-11-27 (antes de escrever este ficheiro; o total é o que o
+# `--gate` imprime hoje):
+#   worker/models           1224.5 MB  147 ficheiros  (git-ignored)
+#   _main/_ordem-before/models 1224.5 MB 147  ->  HARDLINKS dos mesmos inodes
+#     (verificado: 147/147 `st_ino` iguais, 0 separados) logo NÃO ocupa nada e
+#     um reclaim ali liberta 0 bytes: fica declarado, nunca "reclamado".
+#   .codeintel 283.2 MB / 27, _main/_design-lane/zips 84.2 MB / 3023,
+#   .agent-work 48.5 MB / 646, _cache 57.1 MB / 580, _main/_cache 78.9 MB / 876,
+#   history 47.2 MB / 103, _main/_audit-verify 10.2 MB / 788,
+#   _main/fixtures 2.6 MB / 25.
+# Os `cap_gib` são ~2-3x o medido: uma corrida alta não vira falso vermelho e
+# um crescimento real (2-3x) vira vermelho.
+
+[[family]]
+name = "engine-weights"
+roots = ["worker/models"]
+producer = "worker/ (pesos ASR; git-ignored, ausentes de qualquer worktree)"
+kind = "external"
+cap_gib = 2.5
+
+[[family]]
+name = "archive-before-checkout"
+# FOTO CONGELADA do worker antes da cura; o `_main/_ordem-cura-oracle.py` a
+# arquiva como braço vermelho. Os pesos dentro dela são HARDLINKS de
+# `worker/models` (147/147 mesmo inode, medido 2026-11-27): o custo REAL desta
+# família são os 4 ficheiros de código, e os pesos já estão contados em
+# `engine-weights`. Contá-los aqui também somaria 1.20 GiB de bytes que não
+# existem -- por isso `models` está excluído e o comentário diz por quê.
+roots = ["_main/_ordem-before"]
+producer = "_main/_ordem-before/ (snapshot congelado do worker antes da cura)"
+kind = "external"
+cap_gib = 0.01
+exclude = ["_main/_ordem-before/models"]
+
+[[family]]
+name = "codeintel-index"
+roots = [".codeintel"]
+producer = "codeintel index (índice de busca; git-ignored, reconstruível)"
+kind = "reclaimable"
+cap_gib = 1.0
+keep_days = 30
+min_age_min = 60
+
+[[family]]
+name = "design-lane-scratch"
+roots = ["_main/_design-lane"]
+producer = "_main/_design-lane (candidatos de design; 89 ficheiros-fonte versionados)"
+kind = "tracked"
+cap_gib = 0.1
+exclude = ["_main/_design-lane/zips/*/node_modules", "_main/_design-lane/__pycache__"]
+
+[[family]]
+name = "design-lane-node-modules"
+# 82.8 MB em 2 933 ficheiros de `node_modules` DENTRO do repo, git-ignorado e
+# sem dono que o leia: um `npm install` de um candidato de design. É a única
+# coisa reclamável em `_main/_design-lane`, e por isso está declarada à parte --
+# contar o que é reconstruível junto com as fontes é o número que mente.
+roots = ["_main/_design-lane/zips/*/node_modules"]
+producer = "npm install dentro de _main/_design-lane/zips/cinematic-2"
+kind = "reclaimable"
+cap_gib = 0.15
+keep_newest = 1
+keep_days = 30
+min_age_min = 60
+
+[[family]]
+name = "agent-work"
+roots = [".agent-work"]
+producer = "lanes de agente (rascunhos de revisão; git-ignored)"
+kind = "reclaimable"
+cap_gib = 0.25
+keep_newest = 40
+keep_days = 14
+min_age_min = 60
+
+[[family]]
+name = "session-cache"
+roots = ["_cache"]
+producer = "_main/console-window-audit.py (cache AST) e irmãos; 1 JSON versionado (`_cache/battery-budget-history.json`)"
+kind = "tracked"
+cap_gib = 0.25
+
+[[family]]
+name = "probe-cache"
+roots = ["_main/_cache"]
+producer = "_main/_cache/*-probe.py, *-measure.py, triage/*"
+kind = "reclaimable"
+cap_gib = 0.5
+keep_newest = 300
+keep_days = 30
+min_age_min = 60
+
+[[family]]
+name = "caption-history"
+roots = ["history"]
+producer = "app/webview/sotto_webview.py:850 history_append (o que o dono vê no painel)"
+kind = "external"
+cap_gib = 0.5
+
+[[family]]
+name = "battery-step-logs"
+roots = ["_main/_audit-verify"]
+producer = "_main/battery-launch.py:48 (OUT), _main/step-deadline.py --log"
+kind = "reclaimable"
+cap_gib = 0.1
+keep_newest = 200
+keep_days = 14
+min_age_min = 30
+exclude = ["_main/_audit-verify/js"]
+
+[[family]]
+name = "measured-fixtures"
+roots = ["_main/fixtures"]
+producer = "_main/yt-snapshot-capture.py e as gravações que os oráculos leem"
+kind = "tracked"
+cap_gib = 0.25
+
+[[family]]
+name = "benchmark-history"
+roots = ["benchmarks"]
+producer = "_main/battery-launch.py + benchmark_history.py (baseline versionado)"
+kind = "tracked"
+cap_gib = 0.05

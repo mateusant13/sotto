@@ -915,11 +915,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-26, depois do par `dm-triage` e dos seis passos da
-  `project-revival`, e da linha `REVIVAL` apontada ao canonico 2026-11-26):**
-  `_main\_audit-verify-all.cmd` = **453801 B**, **5172 CRLF** / 0 bare LF,
-  sha256 `DD6F3F02F177540FF969BF4881F99FD3FD91610855D0220034E1B2D6AEBF692E`.
+- **PIN do ficheiro (re-medido 2026-11-27, depois do par `artifact-manifest` +
+  `red-as-expected-artifact-manifest`):**
+  `_main\_audit-verify-all.cmd` = **455291 B**, **5188 CRLF** / 0 bare LF,
+  sha256 `E4648712815CC8FB6965437EB7EFA3022DA4E26161A1FDA4C6261EA051249BCB`.
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
+  (O par de 2026-11-27 julga a TABELA DE ARTEFACTOS: o instrumento da frota so'
+  reprova OVER e TRUNCATED, logo uma familia `roots` inexistente imprimia EMPTY com
+  rc 0 e duas familias sobrepostas somavam o mesmo byte duas vezes -- medido nesta
+  arvore, 1.20 GiB de hardlinks contados 2x num total de 2.99 GiB quando o volume
+  tem 1.80 GiB. `_main/artifact-manifest-oracle.py` tem 5 arms sobre o payload real
+  e 4 mutantes no `--neg-arm`.)
   (Os quatro passos novos sao os da auditoria de 2026-11-25 -- `config-truth`, `capture-share`,
   `punctuation`, `multi-monitor`, cada um com o seu `red-as-expected`; `discord-streams` e
   `panel-language` entraram depois, tambem em par com o seu `red-as-expected`, e os dois passos
