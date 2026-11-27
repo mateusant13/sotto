@@ -42,8 +42,8 @@ mutante derrube a SUA arm -- rc=1 quando apanha todos:
   * `ordered-never-evicts` -- a janela ordenada acumula -> `series-fields-exact`
     VERMELHA.
 
-Sem janela, sem worker, sem audio, sem rede: `object.__new__` no `SottoShell`
-real (nao corre `__init__`, logo nada abre) e `log` trocado por um colector.
+Sem janela, sem worker, sem audio, sem rede: `SottoShell.for_test()`, o factory
+documentado no proprio shell com so' o estado que estas arms leem.
 """
 import importlib.util
 import io
@@ -91,7 +91,7 @@ class Collector(object):
 
 def make_shell(mod):
     """O `SottoShell` REAL, sem `__init__`: nenhuma janela, nenhum argv."""
-    shell = object.__new__(mod.SottoShell)
+    shell = mod.SottoShell.for_test()
     shell.caption_log = []
     shell._caption_ages = []
     shell._caption_lag_blown = 0

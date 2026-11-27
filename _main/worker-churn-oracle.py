@@ -82,9 +82,10 @@ class FakeTimer:
 
 
 def bridge_stub(mod, sink):
-    """Um `WorkerBridge` sem __init__: os atributos que `_schedule_restart` le',
-    e o metodo REAL a correr por cima deles."""
-    b = object.__new__(mod.WorkerBridge)
+    """Um `WorkerBridge` REAL: `__init__` so' publica estado, nao arranca
+    processo nem fio; os dois metodos de restart ficam mudos a correr por cima
+    dos atributos que `_schedule_restart` le."""
+    b = mod.WorkerBridge(None, WORKER, log=sink)
     b.stopped = False
     b.restarts = 0
     b.no_audio_restarts = 0

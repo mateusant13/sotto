@@ -202,7 +202,7 @@ def judge_wiring(shell) -> list:
         shell.arm_hotkey_role = _arm_stub
         shell.hotkey_config = lambda: _Cfg()
         try:
-            shell_obj = object.__new__(shell.SottoShell)
+            shell_obj = shell.SottoShell.for_test()
             shell_obj.hotkey = None
             shell_obj._hotkey_requested = 'Alt+C'
             shell_obj.live_hotkey = None
@@ -241,7 +241,7 @@ def judge_wiring(shell) -> list:
                                                           or _ThreadStub())
         sentinel = _ThreadStub()
         try:
-            obj = object.__new__(shell.SottoShell)
+            obj = shell.SottoShell.for_test()
             obj.hotkey = None
             obj.live_hotkey = sentinel
             obj._hotkey_requested = 'Alt+C'

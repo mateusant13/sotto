@@ -90,9 +90,10 @@ def load_module(path, name):
 
 
 def build_watcher(mod, painted, clocks, track=None):
-    """Um `ExternalCaptionWatcher` sem `__init__` -- sem janela, sem thread, sem UIA."""
-    obj = object.__new__(mod.ExternalCaptionWatcher)
-    obj.shell = types.SimpleNamespace(youtube_track_thread=FakeThread(track or TRACK))
+    """Um `ExternalCaptionWatcher` REAL: `__init__` so' publica estado, sem
+    thread de UIA nem janela; a leitura do player e' substituida."""
+    shell = types.SimpleNamespace(youtube_track_thread=FakeThread(track or TRACK))
+    obj = mod.ExternalCaptionWatcher(shell)
     obj.yt_video_id = ""
     obj.yt_cue = ""
     obj.yt_reason = ""
