@@ -4666,6 +4666,20 @@ if exist _main\battery-budget-oracle.py (
   call :step always red-as-expected-battery-budget 1 "_main\battery-budget-oracle.py;_main\battery-budget-baseline.json" "%OUT%\battery-budget-neg.log" python _main\battery-budget-oracle.py --neg-arm
   call :expectred red-as-expected-battery-budget !STEP_RC! "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-battery-budget MISSING "%OUT%\battery-budget-neg.log" "NEG-ARM: PASS" )
+REM O CUSTO DE UM PASSO SKIP-SLOW FICA NO REGISTO DO RATCHET (audit #2, 2026-11-27).
+REM `check()` lia `elapsed_s`, saltava o passo e nao escrevia nada: a linha
+REM ficava com o timestamp da ultima corrida REAL e sem razao nenhuma, e o
+REM custo de 154,9 s do `panel-themes` escondia-se como se o passo fosse rapido.
+REM O oraculo grava um SKIP-SLOW num estado SINTETICO e exige elapsed_s,
+REM skip_reason e `skipped`; a arm vermelha remove a escrita e exige RED.
+if exist _main\_stepcache-skip-record-oracle.py (
+  call :step stepcache-skip-record 0 "_main\_stepcache-skip-record-oracle.py;_main\_stepcache.py;_main\battery-budget-oracle.py" "%OUT%\stepcache-skip-record.log" python _main\_stepcache-skip-record-oracle.py
+  call :record stepcache-skip-record !STEP_RC!
+) else ( call :record stepcache-skip-record MISSING )
+if exist _main\_stepcache-skip-record-oracle.py (
+  call :step red-as-expected-stepcache-skip-record 1 "_main\_stepcache-skip-record-oracle.py;_main\_stepcache.py;_main\battery-budget-oracle.py" "%OUT%\stepcache-skip-record-neg.log" python _main\_stepcache-skip-record-oracle.py --neg-arm
+  call :expectred red-as-expected-stepcache-skip-record !STEP_RC! "%OUT%\stepcache-skip-record-neg.log" "NEG-ARM: PASS"
+) else ( call :expectred red-as-expected-stepcache-skip-record MISSING "%OUT%\stepcache-skip-record-neg.log" "NEG-ARM: PASS" )
 REM A POLITICA DE LARGADA NAO VEM DO AMBIENTE (medido 2026-11-12): esta corrida
 REM inteira correu 21 min SEM tecto porque um `SOTTO_BATTERY_NOCAGE=1` herdado da
 REM shell do agente desligou o cage, e o unico passo que o viu foi o ultimo a correr

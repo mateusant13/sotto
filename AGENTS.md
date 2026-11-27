@@ -906,13 +906,14 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-27, depois do par `youtube-sync`):**
-  `_main\_audit-verify-all.cmd` = **462335 B**, **5261 CRLF** / 0 bare LF,
-  sha256 `F204F9A0E25671DB5981119C5D1E28040234EB4B26079A77E169062C9EA67B26`.
-  (O par entrou porque `youtube-sync-oracle.py` era o UNICO oraculo da familia do
-  YouTube fora da bateria -- 56 passos ligados, 0 chamadores -- e por isso a arm
-  3.5 dele ficou VERMELHA sem dono, a exigir `window_by_paint` onde o dono mandou
-  copiar 1:1. Instrumento que ninguem corre nao e' instrumento.)
+- **PIN do ficheiro (re-medido 2026-11-27, depois do par `stepcache-skip-record`):**
+  `_main\_audit-verify-all.cmd` = **463709 B**, **5275 CRLF** / 0 bare LF,
+  sha256 `4A4C179891B7132EE03D7445FEC57E1E26F0A49949E1E505E98E3114A38E8F0D`.
+  (Pares ligados ate' hoje: `youtube-sync` -- unico oraculo da familia sem
+  chamador -- e `stepcache-skip-record` -- um passo SKIP-SLOW era adiado sem
+  escrever custo nem razao, logo o ratchet lia um `elapsed_s` velho e um passo
+  de 154,9 s podia passar por rapido. O oraculo novo grava as duas coisas num
+  estado sintetico e a arm vermelha exige que a escrita falte.)
   O portao e' `_main/agents-md-pins-oracle.py`; se a bateria mudar, re-medir AQUI.
   (O par de 2026-11-27 julga a TABELA DE ARTEFACTOS e o CENSO DE ORFAOS -- ver o recibo
   `_main/receipt-20261127-*`. O historico passo-a-passo de cada par vive em

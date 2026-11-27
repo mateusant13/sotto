@@ -359,6 +359,23 @@ def check(step: str, deps, expect_rc: int = 0, log=None, always: bool = False,
     entry = (state.get("steps") or {}).get(step)
     if not isinstance(entry, dict):
         return False, None, "no-entry: this step was never recorded"
+    # O CUSTO DE UM PASSO SALTADO FICA NO MESMO REGISTO QUE O RATCHET LE'.
+    # `check()` e' chamado pelo CLI (passo-a-passo) e pelo plano: os dois
+    # classificam SKIP-SLOW com este MESMO `elapsed_s`, logo os dois passam por
+    # aqui. Sem a escrita, o passo e' adiado para sempre com o mesmo numero
+    # velho e a linha do ratchet nao diz que foi um passo que NAO correu.
+    skipped_elapsed = None
+    try:
+        skipped_elapsed = float(entry.get("elapsed_s"))
+    except (TypeError, ValueError):
+        pass
+    if fast_mode() and skipped_elapsed is not None and skipped_elapsed > fast_threshold_s():
+        record_skip(step, skipped_elapsed,
+                    reason="SKIP-SLOW elapsed=%.3f threshold=%.3f"
+                           % (skipped_elapsed, fast_threshold_s()),
+                    state_path=state_path)
+    if entry.get("skipped"):
+        return False, None, "skipped: this row is a SKIP-SLOW record, not a verified run"
     fp, missing = fingerprint(items)
     if fp is None:
         return False, None, "dep-missing: %s" % ", ".join(missing)
@@ -474,6 +491,46 @@ def record(step: str, deps, rc: int, log=None, expect_rc: int = 0,
         return False, "state-not-written: %s" % state_path
     if uncached:
         return True, uncached
+    return True, "ok"
+
+
+def record_skip(step, elapsed, reason="", state_path=DEFAULT_STATE):
+    """(ok, reason). O CUSTO de um passo que a bateria NAO voltou a correr.
+
+    O SKIP-SLOW e' legitimo: um passo de 154,9 s nao deve ser repetido em cada
+    volta do laco. O que nao era legitimo era o silencio: o tempo media-se, a
+    decisao de saltar lia-o, e NINGUEM o escrevia de novo. A linha deste passo
+    ficava com o timestamp da ultima corrida REAL, sem razao nenhuma, e um
+    leitor (o `battery-budget-oracle`, o `slowest`, a pagina de estado) nao
+    conseguia distinguir "correu e foi rapido" de "nao correu porque e' caro".
+
+    Escreve no MESMO dict de `record()`, por isso o ratchet ve' o custo; e
+    escreve `skipped=True`, por isso `check()` recusa um HIT a esta linha --
+    um passo saltado nunca e' um portao que passou. So' mexemos em `elapsed_s`,
+    `skip_reason`, `skipped` e `timestamp`: rc, fingerprint, log e o seu sha
+    ficam como estavam, para que a proxima corrida SEM fast mode seja um MISS
+    e o passo volta a correr e a medir de verdade.
+    """
+    try:
+        value = float(elapsed)
+    except (TypeError, ValueError):
+        return False, "elapsed-unreadable: %r" % (elapsed,)
+    if not (0.0 <= value < float("inf")):
+        return False, "elapsed-invalid: %r" % (elapsed,)
+    state, err = load_state(state_path)
+    if err:
+        state = {"version": STATE_VERSION, "steps": {}}
+    steps = state.setdefault("steps", {})
+    entry = steps.get(step)
+    entry = dict(entry) if isinstance(entry, dict) else {}
+    entry["elapsed_s"] = round(value, 3)  # SKIP-RECORD-ELAPSED
+    entry["skip_reason"] = str(reason or "SKIP-SLOW")
+    entry["skipped"] = True
+    entry["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    steps[step] = entry
+    state["version"] = STATE_VERSION
+    if not save_state(state, state_path):
+        return False, "state-not-written: %s" % state_path
     return True, "ok"
 
 
@@ -604,6 +661,14 @@ def main(argv=None) -> int:
     p_check.add_argument("--always", action="store_true",
                          help="never cached (a step whose truth is outside the files)")
 
+    p_skip = sub.add_parser("skip", help="record a step the battery did not run")
+    add_state(p_skip)
+    p_skip.add_argument("--step", required=True)
+    p_skip.add_argument("--elapsed", required=True,
+                        help="the measured cost of the last real run, in seconds")
+    p_skip.add_argument("--reason", default="SKIP-SLOW",
+                        help="why the step was skipped (recorded beside the cost)")
+
     p_rec = sub.add_parser("record", help="record a step that just ran")
     add_state(p_rec)
     p_rec.add_argument("--step", required=True)
@@ -676,6 +741,17 @@ def main(argv=None) -> int:
             sys.stdout.write("RECORDED %s rc=%s\n" % (args.step, args.rc))
             return 0
         sys.stdout.write("RECORD-FAILED %s reason=%s\n" % (args.step, reason))
+        sys.stderr.write("stepcache: %s: %s\n" % (args.step, reason))
+        return 1
+
+    if args.verb == "skip":
+        ok, reason = record_skip(args.step, args.elapsed, reason=args.reason,
+                                 state_path=args.state)
+        if ok:
+            sys.stdout.write("SKIP-RECORDED %s elapsed=%s\n"
+                             % (args.step, args.elapsed))
+            return 0
+        sys.stdout.write("SKIP-RECORD-FAILED %s reason=%s\n" % (args.step, reason))
         sys.stderr.write("stepcache: %s: %s\n" % (args.step, reason))
         return 1
 

@@ -545,6 +545,7 @@
         "_main/_stage-ab.py",
         "_main/_stdin_probe.py",
         "_main/_stepcache-oracle.py",
+        "_main/_stepcache-skip-record-oracle.py",
         "_main/_stepcache.py",
         "_main/_strip-launch-health.py",
         "_main/_strip-logmutant-repro.py",
