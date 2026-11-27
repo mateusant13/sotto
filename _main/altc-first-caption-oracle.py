@@ -561,9 +561,25 @@ def main(argv=None):
     # lido como se fosse da arvore actual. A sessao cujo build NAO e' o do disco
     # nao da' veredicto: diz NO-MEASURE e nomeia os dois ids.
     disco = disk_code_id()
+    # UM ID ILEGIVEL NAO AUTORIZA NADA (medido 2026-11-27, triage row 9). A versao
+    # anterior filtrava com `disco is None or ...`: sem id, TODAS as sessoes
+    # passavam e o oraculo podia imprimir GREEN sobre um build que nao era o do
+    # disco -- exactamente o defeito de 2026-10-30 que o comentario abaixo
+    # descreve, reintroduzido pela porta do `None`. Um id que nao se le e'
+    # CANNOT-MEASURE com o motivo, nunca permissao.
+    if disco is None:
+        linhas.append("MEDICAO AUSENTE: nao foi possivel ler o id do build que esta' no "
+                      "disco (`sotto_webview.code_identity()`), logo nenhuma sessao pode "
+                      "ser atribuida ao codigo de hoje")
+        text = "\n".join(linhas)
+        print(text)
+        if args.write:
+            io.open(args.write, "w", encoding="utf-8", newline="").write(text + "\n")
+        print("ALTC-FIRST-CAPTION VERDICT NO-MEASURE (rc=2) why=disk-code-id-unreadable")
+        return 2
     # Uma sessao SEM `SHELL_CODE_ID` no log e' de um build anterior a 2026-10-30:
     # nao se sabe que codigo correu, por isso nao e' evidencia de nada.
-    sessoes = [x for x in sessoes if disco is None or x.get("code") == disco]
+    sessoes = [x for x in sessoes if x.get("code") == disco]
     if not sessoes:
         linhas.append("MEDICAO AUSENTE: nenhuma sessao com pressao nasceu do build "
                       "que esta' no disco (disco sha256=%s)" % (disco or "?"))

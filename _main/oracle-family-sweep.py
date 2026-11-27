@@ -104,11 +104,24 @@ def deps_for(name):
     e' vazia: o oraculo muda -> o passo muda.
     """
     deps = [os.path.join("_main", name)]
+    # A CHAVE DO CACHE TEM DE CONTER O QUE OS ORACULOS DA FAMILIA LEEM. A lista
+    # anterior era so' `app/webview/*`: uma edicao em `worker/sotto_worker.py`
+    # deixava o HIT de pe' e o passo era SALTADO sem correr -- um portao que nao
+    # corre mede nada (medido 2026-11-27, triage row 8). Um MISS a mais custa
+    # segundos; um HIT a mais custa o defeito que o portao existia para apanhar.
     for extra in ("app/webview/sotto_webview.py",
                   "app/webview/youtube_window.py",
                   "app/webview/youtube_reveal.py",
                   "app/webview/youtube_captions.py",
-                  "app/webview/youtube_cdp_source.py"):
+                  "app/webview/youtube_cdp_source.py",
+                  "app/webview/youtube_clock.py",
+                  "app/webview/caption_overlay.py",
+                  "app/webview/hotkey_gesture.py",
+                  "worker/sotto_worker.py",
+                  "worker/punctuation_model.py",
+                  "worker/engine_switch.py",
+                  "worker/wasapi_loopback.py",
+                  "worker/capture_share.py"):
         if os.path.isfile(os.path.join(ROOT, extra)):
             deps.append(extra)
     return deps
