@@ -1,9 +1,9 @@
 {
   "schema": "revival.features/v1",
   "repo": "sotto",
-  "git_head": "13ef3df",
-  "generated_at": "2026-11-27T06:59:39Z",
-  "total_tracked_files": 3418,
+  "git_head": "61802bc",
+  "generated_at": "2026-11-27T07:04:20Z",
+  "total_tracked_files": 3421,
   "feature_count": 15,
   "features": [
     {
@@ -1143,6 +1143,7 @@
         "_main/sidecar-wiring-oracle.py",
         "_main/silence-kill-oracle.py",
         "_main/silent-fallback-probe.js",
+        "_main/sim-seed.py",
         "_main/sim/make-youtube-caption-sim.py",
         "_main/sim/measure-youtube-captions.py",
         "_main/sim/panel-sim.html",
@@ -1341,8 +1342,8 @@
         "_main/zip-mockups/zip-E-panels.html",
         "_main/zipc-designs-oracle.py"
       ],
-      "file_count": 1329,
-      "recent_commit_touches": 346,
+      "file_count": 1330,
+      "recent_commit_touches": 349,
       "recent_commit_subjects": [
         "perf(nemotron-oracle): split a 1.5 MB source once, not 12x (46.2s -> 3.0s CPU)",
         "fix(gates): two false greens closed, ambient arm declared, dm-triage wired",
@@ -1792,14 +1793,12 @@
         "app/webview/z_order.py"
       ],
       "file_count": 51,
-      "recent_commit_touches": 55,
+      "recent_commit_touches": 67,
       "recent_commit_subjects": [
+        "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth",
         "fix(caption): budget the whole caption read, not only the UIA branch",
         "fix(caption): a parked CDP source is not a cooldown to expire",
         "fix(caption): the heartbeat writes its first tick before anything can stop it",
-        "feat(caption): a third witness that tells a machine stall from our own GIL",
-        "fix(caption): the reveal clock's 3 s hold is a named event, not a silent freeze",
-        "perf: stop re-reading an unchanged queue dir and stop repeating the same orphan line (8.2x on refresh)",
         "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery"
       ],
       "how_it_works": "`app/webview/sotto_webview.py` is the live WebView2 shell: it hosts `panel.html` from app/panel unchanged and exposes the `window.sotto` bridge ported from the Electron preload. `youtube_cdp_source.py` supplies captions from the player CDP tree when UIA goes blank in a background tab, with `youtube_clock.py` and `youtube_monotonic.py` owning cue timing. `overlay_paint.py` holds the pure measurement, layout and bitmap half of the overlay paint while `caption_overlay.py` owns the on-screen window; `history_context.py` and the shell's history writer persist committed lines. `headless_paint.py` replays 745 real freeze samples off-screen for the paint budget.",
@@ -1900,8 +1899,10 @@
         "probe/which_import.py"
       ],
       "file_count": 7,
-      "recent_commit_touches": 0,
-      "recent_commit_subjects": [],
+      "recent_commit_touches": 4,
+      "recent_commit_subjects": [
+        "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth"
+      ],
       "how_it_works": "`probe/sotto_probe.py` is the two-question probe: it enumerates sounddevice inputs, captures a short loopback window and transcribes a synthetic WAV through faster_whisper, printing JSON and failing if either side has no evidence. `tap_probe.py` tests candidate tap devices for actual signal, `load_model.py` measures model load and device choice, and `laneshape.py`, `shape.py` and `native_imports.py` inspect agent-session lane shape and import availability. They are standalone instruments: no app module imports them.",
       "inputs": [
         "Sounddevice device list and a 2 s capture window",
@@ -2061,14 +2062,13 @@
         "worker/wasapi_loopback.py"
       ],
       "file_count": 44,
-      "recent_commit_touches": 47,
+      "recent_commit_touches": 55,
       "recent_commit_subjects": [
-        "fix: the constant my trim deleted, and three controls that had stopped judging",
-        "perf(sidecar): the cliff note keeps the measurement without the essay",
-        "perf(sidecar): the diarizer window drops to the measured side of the cliff",
-        "fix(youtube): a stale photo and a disproved pause no longer blank the caption",
+        "revival v4.2 (rest): SIM ledger + hook, ruff 60->0, undefined-names AugAssign arm, feature map truth",
         "feat(capture): transcribe the microphone on every rung, PT-BR panel, green battery",
-        "feat(engines): CUDA-only Redux/Ultra/speaker sessions and counted queue eviction"
+        "feat(audio): capture the microphone and transcribe both sides",
+        "worker: reopen a tap whose meter is blind when the run already delivered",
+        "fix: the constant my trim deleted, and three controls that had stopped judging"
       ],
       "how_it_works": "`worker/sotto_worker.py` is the live ASR worker: sounddevice loopback capture into a ring, resample, ONNX streaming features, RNN-T decode, punctuation and prosody, and speaker sidecars, with one JSON object per flushed stdout line. `live_route.py` and `engine_switch.py` choose the engine, `audio_queue_consumer.py` drains the queue and `discord_streams.py` is the alternate reader reachable from `run.cmd --worker`. `_main/audio-recorder-oracle.py` and `_main/worker-churn-oracle.py` gate capture and shell-driven restarts.",
       "inputs": [
