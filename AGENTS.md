@@ -1293,11 +1293,6 @@ da app; o ledger imprime `FIXED, NOT VERIFIED`.
 Ordem do dono via Herdr (dm-0d23648ea897a2fb1d16-6, ROLLOUT F6): *"use o skill `project-revival` E o
 `codeintel full` NESTE projeto... Publique um RECIBO, nao um adjetivo."*
 
-**Skill pinado: `project-revival` v4.6.0** (`C:/Users/Administrador/.agents/skills/project-revival/SKILL.md`
-declara `version: "4.6.0"`, medido 2026-11-27). As quatro etapas de revival deste repo vivem em
-`scripts/gate.py` (`revival`, `sim`, `feature-map`, `angles` + `budgets`) e o gate de um so ficheiro e
-`py -3 scripts/revival_gate.py`.
-
 - **2026-11-27 · `scripts/revival_gate.py` e' o entrypoint que a frota procura, e ele existe EM CODIGO.**
   Le `features/features.json` + `harness/angles.tsv` + `benchmarks/budgets.json` + `revival/GOAL.json`
   e devolve rc. Medido no mesmo turno: positivo `REVIVAL GATE PASS` rc **0** (`FEATURE SYNC OK`,

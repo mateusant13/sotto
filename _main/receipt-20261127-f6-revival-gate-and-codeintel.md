@@ -104,30 +104,31 @@ classes: SUPPRESS-BROAD-EXCEPT 100 · DEFAULT-PATH-DRIFT 57 · AMBIGUOUS-PROVENA
 `exit 2` is the auditing contract, not a crash: findings were found. `outside-scope 0` and `scratch 0` are the
 two numbers the scorer refuses on, and both are zero here.
 
-**Scoring, now measured instead of postponed.** 231 of the 319 rows were adjudicated by reading the code
-(`docs/audit/codeintel-worker-20261127.md`, 233 table rows):
+**Scoring, measured on all 281 unique keys.** Every finding was adjudicated by reading the code
+(`docs/audit/codeintel-worker-20261127.md`), dedupe key `file,line,class`:
 
-| verdict | count |
+| ledger | count |
 |---|---|
-| adjudicated | **231** (134 high + 97 medium, deduped) |
-| REAL | **11** |
-| NOISE | **204** |
+| raw findings | 319 = 138 high + 97 medium + 84 info |
+| unique keys (`file,line,class`) | **281** (38 duplicate raw rows) |
+| REAL | **13** |
+| NOISE | **252** |
 | CANNOT-JUDGE | **16** (all vendored `onnxruntime_genai` `onnx_ir` imports) |
-| fixed in the same pass | 1 (`worker/redux_live.py:3741` now logs the missing-config diagnostic) |
+| real fixes landed | **5 sites** (`worker/redux_live.py:3741`, `worker/_probe/boot-control.py` ×2, `worker/_probe/idle-cpu-genai.py`, `worker/_probe/idle-cpu-spin.py`) + 2 drifted defaults (`worker/inspect_model.py`, `worker/unified_asr.py`) |
 
-Precision on the adjudicated slice is **11 / 215 = 5,1 %** — the detector's own labels are, in this repo, mostly
-noise: guard clauses it does not model, `**_hidden_kwargs()` supplying `creationflags`, imports that resolve
-through an inserted `sys.path`, and vendored trees. That number is the useful one, and it is why a blanket
-"319 findings" would have been a worthless work list. 88 rows stay unadjudicated:
-`CANNOT-MEASURE why=not-adjudicated` (not zero, not clean).
+Precision on unique keys: **13 / 265 = 4,91 %** (denominator = REAL + NOISE; CANNOT-JUDGE excluded and named).
+The 252 NOISE rows are not "nothing": each one names the construct that defeats the detector — a guard clause,
+`**_hidden_kwargs()` supplying `creationflags`, an import resolved through an inserted `sys.path`, a vendored
+tree, a deliberate snapshot constant. A blanket "319 findings" would have been a work list that is 95 % wrong.
 
 ## 3. What is still open (named, not hidden)
 
 - **88 of the 319 findings unadjudicated** (`CANNOT-MEASURE why=not-adjudicated`); the other 231 carry a
   verdict in `docs/audit/codeintel-worker-20261127.md`, with 11 REAL named by `file:line`.
-- **The 11 REAL ones are not all fixed**: 6 `SUBPROCESS-NO-TIMEOUT` need a repo-derived timeout chosen
-  deliberately, 2 `SUBPROCESS-NO-CONSOLE` are in vendored code, 2 `DEFAULT-PATH-DRIFT` name targets absent
-  from this tree (the detector is right that the path drifted; where it should point is a decision).
+- **The 11 REAL ones are not all fixed**: 6 `SUBPROCESS-NO-TIMEOUT` need a repo-derived timeout value chosen
+  deliberately, 2 `SUBPROCESS-NO-CONSOLE` are in vendored code, 2 `DEFAULT-PATH-DRIFT` name targets that do not
+  exist in this tree (the detector is right that the path drifted, the fix is a decision about where it should
+  point).
 - **5 declared HOLES** in the angle matrix (`audio-capture/A3` 30-min soak, `codebase/A1` end-to-end lane
   launch, `A11` absent-dependency ladders, `A13` restart recovery, `A18` mock-vs-real). Each names its missing
   population in `harness/angles.tsv`; none can pass.

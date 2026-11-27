@@ -1,8 +1,19 @@
 import onnxruntime_genai as og
 import onnxruntime as ort
 import os
+import sys
+from pathlib import Path
 
-model_dir = r'H:/sotto/worker/models/nemotron-3.5-asr-streaming-0.6b-int8'
+# Host-independent default (measured 2026-11-27: the old literal was "H:/sotto/worker/models/...",
+# correct only on the machine that wrote it -- DEFAULT-PATH-DRIFT). Resolution: <argv[1]>, then
+# SOTTO_NEMOTRON_DIR, then this file's own worker/models. A missing target is named and exits rc 2
+# instead of raising a traceback out of og.Model.
+_HERE = Path(__file__).resolve().parent
+model_dir = str(sys.argv[1] if len(sys.argv) > 1 else os.environ.get(
+    "SOTTO_NEMOTRON_DIR", _HERE / "models" / "nemotron-3.5-asr-streaming-0.6b-int8"))
+if not Path(model_dir, "encoder.onnx").is_file():
+    print("INSPECT_MODEL CANNOT-MEASURE reason=missing-model path=%s" % model_dir, file=sys.stderr)
+    raise SystemExit(2)
 m = og.Model(model_dir)
 
 print('=== og.Model inspection ===')

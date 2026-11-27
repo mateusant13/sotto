@@ -345,3 +345,17 @@ Observed output: `PROOF: missing -> {} + err diagnostic; existing -> unchanged p
 ## CANNOT-JUDGE rows
 
 All 16 are `HALLUCINATED-IMPORT` for `onnx_ir` in the vendored `onnxruntime_genai` model builder tree. `onnx_ir` is absent from this interpreter and not vendored; whether the target runtime installs it is a runtime fact, not a static one. The imported symbols are used, so no import was deleted.
+
+## Fixed after adjudication (2026-11-27)
+
+| site | class | fix | proof |
+|---|---|---|---|
+| `worker/redux_live.py:3741` | SILENT-ENOENT-FALLBACK | missing config now logs through `err()` before returning `{}` | missing -> `{}` + diagnostic; existing -> parsed config unchanged |
+| `worker/_probe/boot-control.py` (2 sites) | SUBPROCESS-NO-TIMEOUT | `CHILD_TIMEOUT_S = 300`, `TimeoutExpired` named on stderr, rc 1 / rc 2 | `--selftest` rc 0, timeout arm fires with `0.05` |
+| `worker/_probe/idle-cpu-genai.py`, `worker/_probe/idle-cpu-spin.py` | SUBPROCESS-NO-TIMEOUT | `CHILD_TIMEOUT_S = 60.0` (10x / 8x the probe's own window), JSON `per_thread: "timeout"`, rc 2 | mutated timeout -> rc 2 in both; `--help` rc 0 |
+| `worker/inspect_model.py:5` | DEFAULT-PATH-DRIFT / ABSOLUTE-DEFAULT-PATH | path derived from the file's own directory, `argv[1]` and `SOTTO_NEMOTRON_DIR` override | run rc 2 `INSPECT_MODEL CANNOT-MEASURE reason=missing-model path=...` |
+| `worker/unified_asr.py:41` | DEFAULT-PATH-DRIFT / ABSOLUTE-DEFAULT-PATH | `DEFAULT_MODEL` repo-relative with `SOTTO_UNIFIED_NEMO` override | `UnifiedAsr()` -> `SystemExit: UNIFIED_UNAVAILABLE reason=missing-model path=...` |
+
+Still REAL and unfixed, by decision: the two vendored `onnxruntime_genai` / `parakeet-redux-onnx-int4` sites
+(generated/vendored trees, regenerated on model setup) and the remaining `SUBPROCESS-NO-TIMEOUT` rows that
+live inside them.

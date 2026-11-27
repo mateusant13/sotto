@@ -32,13 +32,19 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import statistics
 import sys
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MODEL = Path(r"I:/cc-tmp/models-src/unified.nemo")
+# Host-independent default (measured 2026-11-27: the old literal pointed at I:/cc-tmp, a foreign
+# temp volume, and the target was absent on this host -- a default that is only correct on the
+# machine that wrote it). Resolution order: SOTTO_UNIFIED_NEMO, then <repo>/worker/models.
+# A missing target is already named, not swallowed: UnifiedAsr.__init__ raises
+# SystemExit("UNIFIED_UNAVAILABLE reason=missing-model path=<path>").
+DEFAULT_MODEL = Path(os.environ.get("SOTTO_UNIFIED_NEMO", str(ROOT / "worker" / "models" / "unified.nemo")))
 SAMPLE_RATE = 16000
 SAMPLES_PER_ENCODER_FRAME = 1280  # 80 ms: 160 samples/mel-frame * subsampling 8
 
