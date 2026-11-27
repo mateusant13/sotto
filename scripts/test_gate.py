@@ -74,6 +74,21 @@ class GateSummaryTest(unittest.TestCase):
         self.assertIn(f"gate PASS {ran}/{ran} stages (2 SKIPPED)", summary)
         self.assertNotIn(f"{len(GATE.STAGES)}/{len(GATE.STAGES)}", summary)
 
+    def test_angles_neg_arm_without_verdict_is_not_a_red(self):
+        calls = []
+
+        def fake_run(argv, cwd, seconds):
+            calls.append(argv)
+            if len(calls) == 1:
+                return 0, "FIXTURE VERDICT: PASS", 10, False
+            return 2, "NEG-ARM VERDICT: FAIL (2/7 mutants caught)", 10, False
+
+        with patch.object(GATE, "run", side_effect=fake_run):
+            result = GATE.stage_angles(GATE.time.monotonic() + 100)
+        self.assertEqual(result["verdict"], "REFUSED")
+        self.assertTrue(result["cannot_measure"])
+        self.assertIn("neg rc=2", result["detail"])
+
 
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False, verbosity=2).result.wasSuccessful() else 1)
