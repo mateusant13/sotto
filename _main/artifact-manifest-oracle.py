@@ -217,6 +217,9 @@ def neg_arm() -> int:
     # HOUSE CONVENTION: rc 1 quando todos os mutantes foram apanhados (o
     # `:expectred` da bateria exige rc=1), rc 2 quando o proprio controlo falhou.
     print("NEG-ARM VERDICT:", "PASS" if not bad else "FAIL")
+    # The battery's `:expectred` for this step asks for the exact bytes
+    # "NEG-ARM PASS"; the older verdict line above is kept for the receipt.
+    print("NEG-ARM PASS" if not bad else "NEG-ARM FAIL")
     return 2 if bad else 1
 
 

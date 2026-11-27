@@ -41,7 +41,11 @@ ANGLE_RE = re.compile(r"^[A-Z]\d+-[a-z0-9]+(?:-[a-z0-9]+)*$")
 PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_/.-])((?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+\.(?:jsonl|json|tsv|py|md))(?::\d+)?"
 )
-
+# The neg-arm re-runs this gate as a child once per mutant. One child is a
+# local file check, not a product workload: 30 s is a DECLARED ceiling that
+# keeps the whole control far below the battery's 240 s step deadline. A hung
+# child must fail the control, never pin the battery waiting on it.
+NEG_ARM_CHILD_TIMEOUT_S = 30.0
 
 
 def _fail(message: str) -> int:
@@ -477,7 +481,8 @@ def neg_arm() -> int:
             done = subprocess.run(
                 [sys.executable, str(Path(__file__).resolve()), "--root", str(root),
                  "--only", "angles"],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env)
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+                timeout=NEG_ARM_CHILD_TIMEOUT_S)
             return done.returncode, (done.stdout or "") + (done.stderr or "")
 
         rc, out = run()
