@@ -55,6 +55,10 @@ Uso:
 from __future__ import annotations
 
 import argparse
+
+import importlib.util
+import io
+
 import os
 import re
 import sys
@@ -68,6 +72,20 @@ LIMIAR_MS = 150
 MIN_CUES = 5
 #: O tecto de linhas do ecra (`rcRows: 2` do payload do YouTube).
 MAX_ROWS = 2
+
+# O QUE E' JULGADO (2026-11-27). O log e' ANEXO e guarda sessoes de codigos que
+# ja' nao existem: 2206 `CAPTION_LAND` duplicados escritos por uma build antiga
+# nao sao uma afirmacao sobre a arvore de hoje. Por omissao so' a ULTIMA sessao
+# (`SHELL_STARTUP_STAGE` final) e' julgada; as contas do historico sao IMPRESSAS
+# e nao entram no veredicto. `--all` devolve o julgamento do ficheiro inteiro
+# para auditoria. Uma sessao que o oraculo de frescura diz STALE nao e' julgada
+# como se fosse codigo atual: e' SKIPPED, nunca um verde.
+
+#: O mesmo limite de epoch que a bateria ja' usa (`steps` e `CAPTION_LAND` sao
+#: por sessao): tudo depois da ULTIMA linha e' a sessao que se julga.
+SESSION_MARK = 'SHELL_STARTUP_STAGE'
+FRESHNESS_SCRIPT = os.path.join(HERE, 'live-code-freshness-oracle.py')
+
 
 _TS = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})")
 _LAND = re.compile(
@@ -237,6 +255,89 @@ def report(out, stream):
                     "FAIL" if out["rc"] == 1 else "SKIPPED", skip_reason))
 
 
+def session_windows(lines):
+    """`[(1-based line, [linhas da sessao])]`, ate' ao proximo arranque."""
+    starts = [i for i, line in enumerate(lines) if SESSION_MARK in line]
+    windows = []
+    for k, start in enumerate(starts):
+        end = starts[k + 1] if k + 1 < len(starts) else len(lines)
+        windows.append((start, lines[start:end]))
+    return windows
+
+
+def history_line(lines):
+    """As contas do ficheiro INTEIRO, impressas, nunca julgadas."""
+    parsed = parse(lines)
+    seen = set()
+    duplicates = 0
+    for item in parsed[0]:
+        key = round(item["cue_t0"], 3)
+        if key in seen:
+            duplicates += 1
+        else:
+            seen.add(key)
+    median = evaluate(*parsed[:5])["mediana_ms"]
+    return ("HISTORICO nao julgado: %d sessao(oes), %d CAPTION_LAND, "
+            "%d duplicadas, mediana %s ms -- escrito por codigo anterior; "
+            "ver --all"
+            % (len(session_windows(lines)), len(parsed[0]), duplicates,
+               median if median is not None else '?'))
+
+
+def session_freshness(window):
+    """O veredito do oraculo de frescura, SEM copiar a regra dele."""
+    try:
+        spec = importlib.util.spec_from_file_location(
+            'sotto_live_freshness_for_land', FRESHNESS_SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = mod
+        spec.loader.exec_module(mod)
+        return mod.judge(mod.load_shell(), ''.join(window))
+    except Exception as exc:                       # noqa: BLE001
+        return 'UNKNOWN', {'why': '%s: %s' % (type(exc).__name__, exc)}
+
+
+def judge(lines, all_history=False, tail=0):
+    """`(out, population, parsed, janelas)` -- a POPULACAO e' a unica mudanca.
+
+    `parse` e `evaluate` continuam intocados: muda so' a populacao que lhes
+    chega. Limiar, minimo e contagem de duplicados sao o codigo de sempre.
+    """
+    windows = session_windows(lines)
+    if all_history:
+        population = list(lines)
+        scope = 'historico-inteiro'
+    else:
+        population = windows[-1][1] if windows else []
+        scope = 'ultima-sessao'
+    if tail and tail > 0:
+        population = population[-tail:]
+    parsed = parse(population)
+    out = evaluate(*parsed[:5])
+    out["scope"] = scope
+    out["session_count"] = len(windows)
+    out["session_header"] = (windows[-1][1][0].strip() if windows else '')
+    if not all_history:
+        if not windows:
+            out["rc"] = 2
+            out["why"] = "sem %s no log: nao ha' sessao para julgar" % SESSION_MARK
+            out["skip_reason"] = "no-session"
+        else:
+            verdict, detail = session_freshness(windows[-1][1])
+            out["freshness"] = verdict
+            if verdict == 'STALE':
+                out["rc"] = 2
+                out["why"] = ("ultima sessao %s diz STALE (%s): codigo "
+                              "anterior, nao se julga como atual; ver --all"
+                              % (out["session_header"][:70],
+                                 detail.get("why", "")))
+                out["skip_reason"] = "stale-session"
+            elif not parsed[0]:
+                out["rc"] = 2
+                out["why"] = "a ultima sessao ainda nao escreveu CAPTION_LAND"
+                out["skip_reason"] = "no-session"
+    return out, population, parsed, windows
+
 # ── O BRAÇO NEGATIVO ─────────────────────────────────────────────────────────
 def _synthetic(green=True):
     """Um log sintetico no formato REAL das linhas (o processo vivo e' antigo).
@@ -286,6 +387,19 @@ def _mutate(lines, kind):
                         "rows=%s%s" % (head, t0, paint, lag, rows, tail))
             out.append(line)
             continue
+        if kind == "duplicate":
+            m = _LAND.search(line)
+            if m:
+                t0 = float(m.group(1))
+                paint = float(m.group(2)) + 0.5
+                lag = int(round((paint - t0) * 1000.0))
+                head = line[:m.start()]
+                tail = line[m.end():]
+                rows = m.group(4) or "2"
+                out.append(line)
+                out.append("%sCAPTION_LAND cue_t0=%.3f paint_t=%.3f lag_ms=%d "
+                           "rows=%s%s" % (head, t0, paint, lag, rows, tail))
+                continue
         if kind == "no-land":
             if _LAND.search(line):
                 continue
@@ -322,6 +436,12 @@ def _mutate(lines, kind):
     return out
 
 
+def _session_log(body, stamp="2099-01-01 00:00:00.000", pid=7):
+    """Uma sessao sintetica com arranque FRESH (sem codigo antigo a medir)."""
+    return (["%s sotto: %s pid=%d stage=pre-lock python=oracle\n"
+             % (stamp, SESSION_MARK, pid)] + list(body))
+
+
 def neg_arm():
     """Cada mutante TEM de cair; o log limpo TEM de passar."""
     print("NEG-ARM fixture  log sintetico VERDE")
@@ -344,6 +464,35 @@ def neg_arm():
         caught += 1 if hit else 0
         print("NEG-ARM %-10s %-38s want rc=%d got rc=%d %s"
               % (kind, why, want, out["rc"], "CAIU" if hit else "** PASSOU **"))
+    # O PAR QUE PROVA QUE A JANELA E' UMA JANELA, NAO UMA VENDA. O mesmo log
+    # duplicado: DENTRO da sessao julgada TEM de cair; FORA dela TEM de passar
+    # com a linha HISTORICO presente. Sem o par, `--all` podia ter virado um
+    # blindfold e ninguem ia notar.
+    fixtures = [
+        ("window-dupe",
+         _session_log(_mutate(_synthetic(True), "duplicate")),
+         1, "pintado duas vezes",
+         "duplicada DENTRO da janela e' RED"),
+        ("history-dupe",
+         (_session_log(_mutate(_synthetic(True), "duplicate"),
+                       stamp="2020-01-01 00:00:00.000", pid=6)
+          + _session_log(_synthetic(True))),
+         0, "HISTORICO nao julgado",
+         "duplicada FORA da janela nao e' veredicto"),
+    ]
+    for label, lines_fixture, want, marker, why in fixtures:
+        out_j, _population, _parsed, _windows = judge(lines_fixture)
+        buf = io.StringIO()
+        report(out_j, buf)
+        buf.write(history_line(lines_fixture) + "\n")
+        text = buf.getvalue()
+        hit = out_j["rc"] == want and marker in text
+        caught += 1 if hit else 0
+        print("NEG-ARM %-12s %-46s want rc=%d got rc=%d %s"
+              % (label, why, want, out_j["rc"], "CAIU" if hit else "** PASSOU **"))
+        for line in text.splitlines():
+            if marker in line or line.startswith("VERDICT"):
+                print("  " + line)
     live_counts = 0
     if os.path.exists(DEFAULT_LOG):
         # O LOG REAL, quando ja' tiver linhas: o mesmo mutante de atraso tem de
@@ -381,7 +530,7 @@ def neg_arm():
             print("NEG-ARM real       saltado: %d cue(s), controlo rc=%d %s"
                   % (len(parsed[0]), base["rc"],
                      base.get("why", "") if base["rc"] else ""))
-    total = len(mutants) + live_counts
+    total = len(mutants) + live_counts + len(fixtures)
     print("NEG-ARM %d of %d mutant(s) caught" % (caught, total))
     # CONTRATO DA BATERIA: rc=1 = o mutante foi apanhado; rc=0 = o controlo
     # NAO derrubou nada (o `:expectred` le isso como falha).
@@ -410,6 +559,9 @@ def main(argv=None):
                     help="log a ler (por omissao %s)" % DEFAULT_LOG)
     ap.add_argument("--neg-arm", action="store_true",
                     help="prova o oraculo contra mutantes: todos TEM de cair")
+    ap.add_argument("--all", action="store_true",
+                    help="julga o ficheiro inteiro, incluindo sessoes antigas")
+
     ap.add_argument("--tail", type=int, default=0,
                     help="ler so' as ultimas N linhas (0 = ficheiro inteiro)")
     args = ap.parse_args(argv)
@@ -426,12 +578,17 @@ def main(argv=None):
         print("SEM DADOS -- log ilegivel: %r" % (exc,))
         print("YOUTUBE-LAND VERDICT: SKIPPED reason=log-unreadable")
         return 0
-    if args.tail and args.tail > 0:
-        lines = lines[-args.tail:]
-    land, drops, epoch_drops, decided, bad_land, n_lines = parse(lines)
+    out, population, parsed, windows = judge(
+        lines, all_history=args.all, tail=args.tail)
+    land, drops, epoch_drops, decided, bad_land, n_lines = parsed
     print("LOG       %s (%d linhas, %d CAPTION_LAND)"
-          % (args.log, n_lines, len(land)))
-    out = evaluate(land, drops, epoch_drops, decided, bad_land)
+          % (args.log, len(population), len(land)))
+    print("ESCOPO    %s, %d sessao(oes) no ficheiro"
+          % (out["scope"], len(windows)))
+    if not args.all:
+        print(history_line(lines))
+    if out.get("freshness"):
+        print("FRESHNESS %s" % out["freshness"])
     report(out, sys.stdout)
     # SEM DADOS (rc=2 do ticket) e' rc=0 NA BATERIA, com a frase de skip: e' a
     # unica forma de o passo poder ser skip-capable sem transformar um skip num
