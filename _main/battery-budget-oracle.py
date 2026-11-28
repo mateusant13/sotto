@@ -61,7 +61,19 @@ HISTORY = os.path.join(ROOT, '_cache', 'battery-budget-history.json')
 HISTORY_N = 3
 BASELINE = os.path.join(HERE, 'battery-budget-baseline.json')
 DEFAULT_TARGET_S = 60.0
-RATCHET_PCT = 1.05
+RATCHET_PCT = 1.12
+#: O `1.05` FOI PARA `1.12` PORQUE A REPETIBILIDADE MEDIDA DO PROPRIO MEDIDOR E'
+#: MAIOR QUE ELE (medido 2026-11-27). O total de CPU dos passos COMUNS, na mesma
+#: arvore e com o mesmo codigo:
+#:   #12  399,3 s   |   #13  438,5 s   (+9,8 %)          <- ja' escrito acima
+#:   #5   349,8 s (corrida mais leve) | #7 434,4 s (+24 %)  <- mesma populacao
+#: A corrida #7 levou RED com `CPU 434.4s vs tecto 419.2s` -- +8,8 %, ou seja,
+#: DENTRO da banda de ruido que este ficheiro ja' documentava. Um tecto mais
+#: estreito que a repetibilidade do medidor nao e' um tecto, e' um sorteio: o
+#: 1,12 fica acima do pior par medido (+9,8 %) e continua a apanhar a classe que
+#: este passo existe para apanhar (`lag-note-cost` 224 s -> 1 364 s, x10, e o
+#: prazo/tecto por passo) porque essas aparecem no ratchet POR PASSO (1,20 com
+#: piso de 20 s) e no prazo absoluto, nao numa diferenca de 9 % no total somado.
 #: O RATCHET POR PASSO USA OUTRO FATOR, e a razao esta' MEDIDA. O `1.05` do
 #: total compara um numero SOMADO -- estavel, porque a contenda de um passo se
 #: dilui nos 370. Um passo sozinho nao tem essa diluicao: medido 2026-11-08, o
@@ -694,9 +706,24 @@ def judge_arms():
     # A12 impede que a cura vire isencao: TODO passo comum +8% (abaixo da regua de
     # 20% por passo) soma 108 s contra o tecto de 105 s e o TECTO DO TOTAL tem de
     # disparar sozinho -- sem isto, apagar a comparacao do total ficaria verde.
-    arm('A12 todos os passos comuns +8% derruba o tecto do total (sem passo isolado)',
-        m({'a': 32.4, 'b': 43.2, 'c': 32.4, 'tiny': 0.32}), False,
+    # O FATOR SAI DO PROPRIO RATCHET, nunca de um literal. MEDIDO 2026-11-27: com
+    # o literal `+8%` e o ratchet em 1,12 A12 ficou RED (o total de +8% ja' nao
+    # derruba tecto nenhum) -- um braco que codifica a constante antiga acusa o
+    # codigo certo. `above` esta' 10% ACIMA da regua, logo derruba por construcao.
+    above = 1.0 + (RATCHET_PCT - 1.0) * 1.10
+    arm('A12 todos os passos comuns acima da regua derrubam o tecto do total '
+        '(sem passo isolado)',
+        m({'a': 30 * above, 'b': 40 * above, 'c': 30 * above,
+           'tiny': 0.3 * above}), False,
         want_red_total=True)
+    # E O OUTRO LADO, que a cura NAO pode apagar: uma diferenca DENTRO da banda
+    # que o ratchet declara passar nao e' regressao -- e se alguem voltar a
+    # estreitar a regua abaixo da repetibilidade medida, este braco cai.
+    inside = 1.0 + (RATCHET_PCT - 1.0) * 0.5
+    arm('A21 diferenca DENTRO da banda declarada nao derruba o tecto do total',
+        m({'a': 30 * inside, 'b': 40 * inside, 'c': 30 * inside,
+           'tiny': 0.3 * inside}), True,
+        want_red_total=False)
     # ── A REGUA DE CPU (medido 2026-11-26: o MESMO comando custou 0,36 s solto e
     # 62,12 s dentro de `--cpu 40 --io very-low`, 170x, com o mesmo CPU). A parede
     # dentro da jaula mede a jaula; o CPU mede o passo. Estes bracos existem para
