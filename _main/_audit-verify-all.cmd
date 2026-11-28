@@ -1579,6 +1579,22 @@ if exist _main\bridge-pump-fault-oracle.py (
 call :step red-as-expected-bridge-pump-fault 1 "_main\bridge-pump-fault-oracle.py;app\webview\sotto_webview.py" "%OUT%\bridge-pump-fault-neg.log" python _main\bridge-pump-fault-oracle.py --neg-arm
 call :expectred red-as-expected-bridge-pump-fault !STEP_RC! "%OUT%\bridge-pump-fault-neg.log" "NEG-ARM: PASS"
 ) else ( call :expectred red-as-expected-bridge-pump-fault MISSING "%OUT%\bridge-pump-fault-neg.log" "NEG-ARM: PASS" )
+REM `death-hold-lift` -- A MORTE QUE A SHELL ORDENOU NAO PODE PRENDER O TEXTO PARA
+REM SEMPRE (medido 2026-11-28). `_kill_and_restart` escreve `pending_error` e o
+REM `_consume` HELDA todos os warmups atras dele; so' uma legenda o levantava, logo um
+REM worker morto por silencio num momento com as legendas locais recusadas
+REM (`ASR_PAINT_REFUSED owner=player`) deixava o texto de morte na tela. MEDIDO no log do
+REM dono: cinco BRIDGE_STATUS_HELD em 17 s a seguir ao BRIDGE_RESTART reason=silent. O
+REM braco ao vivo corre um FILHO REAL (subprocesso Python falando o protocolo JSONL do
+REM worker, sem audio e sem modelo); o mutante remove o lift e exige VERMELHO.
+if exist _main\death-hold-lift-oracle.py (
+call :step death-hold-lift 0 "_main\death-hold-lift-oracle.py;app\webview\sotto_webview.py" "%OUT%\death-hold-lift.log" python _main\death-hold-lift-oracle.py
+call :record death-hold-lift !STEP_RC!
+) else ( call :record death-hold-lift MISSING )
+if exist _main\death-hold-lift-oracle.py (
+call :step red-as-expected-death-hold-lift 1 "_main\death-hold-lift-oracle.py;app\webview\sotto_webview.py" "%OUT%\death-hold-lift-neg.log" python _main\death-hold-lift-oracle.py --neg-arm
+call :expectred red-as-expected-death-hold-lift !STEP_RC! "%OUT%\death-hold-lift-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-death-hold-lift MISSING "%OUT%\death-hold-lift-neg.log" "NEG-ARM PASS" )
 REM `log-rotation` -- UMA ROTACAO QUE NAO ACONTECE NAO PODE SER MUDA (medido 2026-11-27,
 REM triage row 1). O bloco do tecto de 64 MB tinha `except Exception: pass`: a falha nao
 REM aparecia em lado nenhum e o log continuava a crescer sobre o volume onde vivem os dados

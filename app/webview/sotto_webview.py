@@ -26093,6 +26093,22 @@ class WorkerBridge:
                 self.last_error = None
                 self.log(f'BRIDGE_STATUS_NOAUDIO state={json.dumps(state)} '
                          f'kind=no-audio text={json.dumps(text)}')
+            elif (self.pending_error is not None
+                  and state == 'capture-started'
+                  and self.pending_error.get('lift') == 'capture-started'
+                  and child is not None and child is self.child):
+                # O FILHO QUE A SHELL POS, A ABRIR O TAP (medido 2026-11-28).
+                # Uma morte de `rc!=0` e' um veredicto do worker e so' uma
+                # legenda a levanta; uma morte ordenada pela SHELL nao e'
+                # veredicto nenhum, e o substituto a dizer `capture-started` e'
+                # a prova medida de que a troca vingou. `child is self.child`
+                # recusa uma linha tardia do filho que morreu, que e' a mesma
+                # guarda que o `_pump` ja' faz. Uma linha por episodio.
+                self.log('BRIDGE_DEATH_LIFTED reason=capture-started '
+                         f'held={json.dumps(self.pending_error.get("state"))} '
+                         f'pid={child.pid} '
+                         'why=shell-killed-it-and-this-child-opened-its-tap')
+                self.pending_error = None
             elif self.pending_error is not None and state in WORKER_WARMUP_STATES:
                 # A restart re-emits model-loading/model-loaded/capture-started
                 # every cycle. Painting those over a pending death is how the
@@ -26568,6 +26584,24 @@ class WorkerBridge:
                 'text': f'worker killed by the shell ({reason})',
                 'body': (f'The shell stopped worker pid={child.pid}: {reason}. '
                          'A restart is scheduled.'),
+                # QUEM MATOU DECIDE QUEM LEVANTA (medido 2026-11-28). Este
+                # `pending_error` e' escrito pelo PROPRIO shell: a morte nao e'
+                # um veredicto sobre o worker, e' a shell a troca-lo. Sem a
+                # marca abaixo, TODOS os estados de warmup do substituto
+                # (`boot`/`model-loading`/`model-loaded`/`capture-started`)
+                # ficavam HELD atras desta linha, e como so' uma legenda
+                # levanta `pending_error`, um worker morto por silencio num
+                # momento em que as legendas locais sao recusadas
+                # (`ASR_PAINT_REFUSED owner=player`) deixava o texto de morte
+                # na tela para sempre -- medido a 02:10:39 no log do dono:
+                # `BRIDGE_STATUS_HELD state="boot" behind="exit"` a seguir ao
+                # `BRIDGE_RESTART reason=silent`.
+                # A prova de que a troca VINGOU e' o filho NOVO abrir o tap
+                # (`capture-started`), medida na linha dele e exigindo que seja
+                # o filho que este bridge possui (`_consume(..., child)`). Uma
+                # morte por `rc!=0` NAO ganha esta marca (`_wait`): ali o
+                # veredicto e' do worker, e so' uma legenda o levanta.
+                'lift': 'capture-started',
             }
             self.log(f'BRIDGE_KILL_NAMED pid={child.pid} why={reason}')
         if child is not None:
