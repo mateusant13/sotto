@@ -19662,16 +19662,8 @@ class SottoShell:
             self._caption_window_shown = False
             ov = getattr(self, 'caption_overlay', None)
             if ov is not None:
-                def _hide():
-                    try:
-                        ov.hide()
-                        ov.show(False)
-                    except Exception as exc:   # noqa: BLE001
-                        log('CAPTION_STATUS_HIDE_FAILED error=%r' % (exc,))
-                try:
-                    self._post(_hide)
-                except Exception:               # noqa: BLE001
-                    pass
+                # Nao depende da thread de UI (2026-11-28): ver `_overlay_hide_now`.
+                self._overlay_hide_now(ov, 'status-hide:off')
             ms = int((time.time() - float(armed or 0.0)) * 1000.0) if armed else 0
             log('CAPTION_STATUS_HIDDEN reason=off after_s=%.1f ms=%d'
                 % (float(self.CAPTION_STATUS_HIDE_S), ms))
@@ -19700,6 +19692,56 @@ class SottoShell:
                     pass
         except Exception:  # noqa: BLE001
             pass
+
+    def _overlay_hide_now(self, ov, why, clear_text=True):
+        """TIRA OS PIXELS AGORA e MEDE. True/False/None (nao medido).
+
+        O QUE ISTO SUBSTITUI, e o numero que o obrigou (2026-11-28): tres sitios
+        (`_blank_caption_window`, `_caption_status_withdraw`, `_caption_status_hide`)
+        faziam `self._post(lambda: ov.hide(); ov.show(False))`. MEDIDO na tela do
+        dono: `CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=3` as
+        01:05:43.588 e `IsWindowVisible(hwnd=722364)` ainda **True** 27 minutos
+        depois, com `carregando modelo...` no ecra -- porque o formulario do
+        WebView2 tinha morrido (`WEBVIEW2_INIT_FAILED RPC_E_DISCONNECTED`,
+        `PANEL_NAV_STALL_FINAL core=no`) e o `BeginInvoke` entrava numa fila que
+        ninguem corria, enquanto TODAS as pinturas seguiam na thread nativa.
+
+        A janela da legenda e' NATIVA e tem o seu proprio `threading.RLock`; a
+        thread de pintura ja' a manipula fora da thread de UI, logo este caminho
+        nao inventa concorrencia nenhuma -- so' deixa de depender de uma thread
+        que o proprio produto declara morta.
+
+        A MEDIDA E' A PROVA: `caption_overlay.on_screen_visible()` pergunta ao
+        Windows, nao ao livro. Um apagamento que nao apagou passa a ter nome
+        (`CAPTION_OVERLAY_HIDE_STUCK`) em vez de silencio.
+        """
+        if ov is None:
+            return None
+        proof = getattr(ov, 'on_screen_visible', None)
+        try:
+            if clear_text:
+                ov.hide()
+            ov.show(False)
+        except Exception as exc:              # noqa: BLE001
+            log('CAPTION_OVERLAY_HIDE_FAILED why=%s error=%r' % (why, exc))
+            return False
+        ok = None
+        if callable(proof):
+            try:
+                ok = not bool(proof())
+            except Exception as exc:          # noqa: BLE001
+                log('CAPTION_OVERLAY_HIDE_PROOF_FAILED why=%s error=%r'
+                    % (why, exc))
+        if ok is False:
+            log('CAPTION_OVERLAY_HIDE_STUCK why=%s hwnd=%s'
+                % (why, getattr(ov, 'hwnd', 0)))
+        # A thread de UI continua a ter o turno dela quando existe: a PAGINA do
+        # painel pertence-lhe, e um esconder duplicado nao pinta nada.
+        try:
+            self._post(lambda: (ov.hide(), ov.show(False)))
+        except Exception:                     # noqa: BLE001
+            pass
+        return ok
 
     def _blank_caption_window(self, reason):
         """TIRA OS PIXELS sem desligar o interruptor do dono.
@@ -19761,19 +19803,14 @@ class SottoShell:
         self._caption_status_queued_for = ''
         self._caption_status_episode_at = 0.0
         self._caption_status_live = False
-        def _blank():
-            # O TEXTO GUARDADO TAMBEM VAI (2026-10-30). `show(False)` so' esconde
-            # a janela: o `text`/`previous` do overlay continuavam la', e o
-            # proximo `show(True)` REPINTAVA a legenda velha -- a cadeia
-            # video-novo -> blank -> HOLD -> legenda antiga volta.
-            ov.hide()
-            ov.show(False)
-        try:
-            self._post(_blank)
-        except Exception:  # noqa: BLE001
-            pass
+        # OS PIXELS NAO ESPERAM PELA THREAD DE UI (2026-11-28). O `_blank`
+        # antigo era `self._post(...)` e o `_post` morre com o formulario do
+        # WebView2: medido, o blank foi escrito e o ecra ficou igual. A janela e'
+        # nativa, logo o apagamento corre AQUI, e o `_post` fica como o segundo
+        # caminho (`_overlay_hide_now` faz as duas coisas).
+        ok = self._overlay_hide_now(ov, 'blank:' + str(reason))
         log(f'CAPTION_WINDOW_BLANKED reason={reason} '
-            f'epoch={self._source_epoch} wanted='
+            f'epoch={self._source_epoch} ok={ok} wanted='
             f'{str(bool(getattr(self, "_caption_wanted", False))).lower()}')
         return True
 
@@ -20359,17 +20396,9 @@ class SottoShell:
             self._caption_pending_status = False
         ov = getattr(self, 'caption_overlay', None)
         if ov is not None:
-            def _hide():
-                try:
-                    ov.hide()
-                    ov.show(False)
-                except Exception as exc:      # noqa: BLE001
-                    log('CAPTION_STATUS_HIDE_FAILED error=%r' % (exc,))
-            try:
-                self._caption_window_shown = False
-                self._post(_hide)
-            except Exception:                 # noqa: BLE001
-                pass
+            self._caption_window_shown = False
+            # Nao depende da thread de UI (2026-11-28): ver `_overlay_hide_now`.
+            self._overlay_hide_now(ov, 'status-withdraw:' + str(cause))
         log('CAPTION_STATUS_CLEARED reason=%s why=%s' % (shown, cause))
         return True
 
@@ -20734,7 +20763,11 @@ class SottoShell:
                     except Exception:         # noqa: BLE001
                         pass
                     self._caption_idle_timer = None
-                self._post(lambda: ov.show(False))
+                # DESLIGAR TAMBEM NAO ESPERA A THREAD DE UI (2026-11-28). O
+                # `_post` do formulario morto deixava o ecra igual ao interruptor
+                # dele -- e o dono mediu-o. `clear_text=False`: o texto guardado
+                # e' o que o religar devolve, e esse contrato nao muda aqui.
+                self._overlay_hide_now(ov, 'switch-off', clear_text=False)
             # E O PAINEL ESCONDE A LEGENDA DELE -- MAS SO QUANDO ESTA JANELA ESTA MESMO
             # A MOSTRAR. O dono pediu a legenda INDEPENDENTE do painel (*"nao acoplado"*),
             # e sem isto as duas apareciam ao mesmo tempo. Ao mesmo tempo, isto e a REDE:

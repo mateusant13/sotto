@@ -605,6 +605,80 @@ def run(src):
     return a['ok'] and b['ok']
 
 
+def arm_blank_with_dead_ui(src):
+    """A BLANK NAO DEPENDE DA THREAD DE UI (2026-11-28).
+
+    MEDIDO na tela do dono: `CAPTION_WINDOW_BLANKED reason=youtube-paused
+    epoch=3` as 01:05:43.588 e `IsWindowVisible(hwnd=722364)` ainda **True**
+    27 minutos depois, com `carregando modelo...` no ecra. O blank ia por
+    `self._post` e o formulario do WebView2 tinha morrido naquele arranque
+    (`WEBVIEW2_INIT_FAILED RPC_E_DISCONNECTED`, `PANEL_NAV_STALL_FINAL
+    core=no`), enquanto TODAS as pinturas seguiam na thread nativa -- por isso
+    o ecra enchia e nunca esvaziava.
+
+    Esta arm conduz o `_blank_caption_window` REAL e o `_overlay_hide_now`
+    REAL com um `_post` que DESCARTA o callable (a thread de UI que nao corre
+    nada) e exige os pixels fora do ecra MAIS a medida na linha.
+    """
+    fn_src = extract_method(src, '_blank_caption_window')
+    hide_src = extract_method(src, '_overlay_hide_now')
+    logs = []
+    ns = {'log': logs.append, '__builtins__': __builtins__}
+    exec(compile(fn_src, '<blank>', 'exec'), ns)
+    exec(compile(hide_src, '<hide-now>', 'exec'), ns)
+
+    class Overlay:
+        hwnd = 722364
+
+        def __init__(self):
+            self.visible = True
+            self.text = 'carregando modelo...'
+
+        def hide(self):
+            self.text = ''
+            return True
+
+        def show(self, on=True):
+            self.visible = bool(on)
+            return True
+
+        def on_screen_visible(self):
+            return self.visible
+
+    class Shell:
+        pass
+
+    shell = Shell()
+    shell.caption_overlay = Overlay()
+    shell._post = lambda fn: False          # a thread de UI nao corre NADA
+    shell._caption_show_pending = True
+    shell._source_epoch = 2
+    shell._caption_pending = ('slot',)
+    shell._external_last_text = 'velho'
+    shell._caption_painted = 'carregando modelo...'
+    shell._caption_painted_at = time.time()
+    shell._last_caption_was_player = False
+    shell._caption_status_reason = 'model-loading'
+    shell._caption_status_queued_for = ''
+    shell._caption_status_episode_at = 1.0
+    shell._caption_status_live = True
+    shell._caption_wanted = True
+    shell._overlay_hide_now = types.MethodType(ns['_overlay_hide_now'], shell)
+
+    ok = bool(ns['_blank_caption_window'](shell, 'youtube-paused'))
+    gone = shell.caption_overlay.on_screen_visible() is False
+    measured = any('CAPTION_WINDOW_BLANKED' in str(x) and 'ok=True' in str(x)
+                   for x in logs)
+    good = bool(ok and gone and measured)
+    # UM BOOL, como os irmaos: `not arm_x(...)` e' a forma do `--neg-arm`, e uma
+    # tupla e' sempre verdadeira -- medido 2026-11-28, a primeira versao devolvia
+    # `(False, '...')` e o mutante apareceu NOT-CAUGHT por essa razao.
+    print('  [%s] blank sem thread de UI           ok=%s pixels_gone=%s '
+          'measured=%s log=%r'
+          % ('PASS' if good else 'FAIL', ok, gone, measured, logs[-1:]))
+    return good
+
+
 def main(argv):
     src = io.open(SHELL, encoding='utf-8').read()
     if '--neg-arm' not in argv:
@@ -615,6 +689,7 @@ def main(argv):
         ok = arm_release_resets(src) and ok
         ok = arm_release_blanks_pixels(src) and ok
         ok = arm_pause_edge(src) and ok
+        ok = arm_blank_with_dead_ui(src) and ok
         print('caption-kept-on-hide-oracle: %s' % ('PASS' if ok else 'FAIL'))
         return 0 if ok else 1
 
@@ -814,14 +889,32 @@ def main(argv):
         "            if False and not youtube_clock.paint_proven(", 1)
     caught_liveness = not arm_display_gate(mutated12)
 
+    # 13) O BLANK VOLTA A SER UM `_post` (2026-11-28): com a thread de UI morta
+    # o pedido entra na fila e nunca corre, e o ecra fica com a ultima linha para
+    # sempre -- exatamente o `carregando modelo...` que o dono mediu. A arm J TEM
+    # de cair.
+    blank_now = "        ok = self._overlay_hide_now(ov, 'blank:' + str(reason))"
+    if src.count(blank_now) != 1:
+        print('NEG-ARM IMPOSSIVEL: o blank medido aparece %d vez(es)'
+              % src.count(blank_now))
+        return 2
+    # O MUTANTE TEM DE MEDIR COMPORTAMENTO, NAO PARTIR O FONTE: sem o `ok` a
+    # linha seguinte rebentava com NameError e a arm "caia" por excepcao, o que
+    # prova nada sobre a thread morta (medido 2026-11-28, primeira versao).
+    mutated13 = src.replace(
+        blank_now,
+        "        self._post(lambda: (ov.hide(), ov.show(False)))\n"
+        "        ok = None", 1)
+    caught_blank_ui = not arm_blank_with_dead_ui(mutated13)
+
     caught = (caught_hide and caught_pause and caught_deferred
               and caught_display and caught_pause_pixels and caught_release
               and caught_scope and caught_resume and caught_dwell
               and caught_frames and caught_release_blank
-              and caught_liveness)
+              and caught_liveness and caught_blank_ui)
     print('NEG-ARM: %s -- hide=%s pausa=%s deferred=%s display=%s '
           'pausa-pixels=%s release=%s escopo=%s retoma=%s dwell=%s desenho=%s'
-          ' release-pixels=%s vivacidade=%s'
+          ' release-pixels=%s vivacidade=%s blank-sem-ui=%s'
           % ('PASS' if caught else 'FAIL',
              'CAUGHT' if caught_hide else 'NOT-CAUGHT',
              'CAUGHT' if caught_pause else 'NOT-CAUGHT',
@@ -834,7 +927,8 @@ def main(argv):
              'CAUGHT' if caught_dwell else 'NOT-CAUGHT',
              'CAUGHT' if caught_frames else 'NOT-CAUGHT',
              'CAUGHT' if caught_release_blank else 'NOT-CAUGHT',
-             'CAUGHT' if caught_liveness else 'NOT-CAUGHT'))
+             'CAUGHT' if caught_liveness else 'NOT-CAUGHT',
+             'CAUGHT' if caught_blank_ui else 'NOT-CAUGHT'))
     return 1 if caught else 0
 
 

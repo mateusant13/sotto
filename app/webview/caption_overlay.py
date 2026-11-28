@@ -2196,6 +2196,26 @@ class NativeCaptionOverlay:
             _user32.ShowWindow(self.hwnd, SW_HIDE)
         return True
 
+    def on_screen_visible(self):
+        """Is the strip ACTUALLY on screen right now? MEASURED, not remembered.
+
+        `self.visible` is what WE asked for (`ShowWindow`); the owner's screen is
+        what `IsWindowVisible` answers, and the two disagree exactly when the
+        request never ran. MEASURED 2026-11-28 on the owner's tree: the log said
+        `CAPTION_WINDOW_BLANKED reason=youtube-paused epoch=3` at 01:05:43.588 and
+        `IsWindowVisible(hwnd=722364)` was still True 27 minutes later, because the
+        blank was POSTED to a WebView2 form that had died
+        (`WEBVIEW2_INIT_FAILED RPC_E_DISCONNECTED`, `PANEL_NAV_STALL_FINAL core=no`)
+        while every paint ran on the native paint thread and landed.
+        """
+        if not self.hwnd:
+            return False
+        try:
+            return bool(_user32.IsWindowVisible(self.hwnd))
+        except Exception as exc:              # noqa: BLE001
+            self.log('CAPTION_OVERLAY_VISIBLE_FAILED error=%r' % (exc,))
+            return None
+
     def destroy(self):
         # The timer chain is daemonic, but retiring it here means a destroyed
         # overlay cannot try to `_update` a window handle that is already gone.
