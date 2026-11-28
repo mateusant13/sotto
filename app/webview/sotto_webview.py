@@ -21221,6 +21221,8 @@ class SottoShell:
             if not _m.get('final'):
                 log(f'CAPTION_ARRIVAL_BLOWN age_ms={_age_ms} '
                     f'budget_ms={self.CAPTION_BUDGET_MS} kind=live '
+                    f'source={_m.get("source") or "-"} '
+                    f'stable={str(bool(_m.get("stable"))).lower()} '
                     f'text={json.dumps(text[:60])}')
         # ── A IDADE DO AUDIO DECIDE SE ISTO E' LEGENDA OU HISTORIA ─────────
         # (2026-11-11). O TEXTO JA' FOI PARA O PAINEL/HISTORICO acima

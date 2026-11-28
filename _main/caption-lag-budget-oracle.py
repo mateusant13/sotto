@@ -228,6 +228,34 @@ def arm_arrival_final_not_blamed(mod, shell, lines, worker_event):
     return ok, ('CAPTION_IN=%s | BLOWN=%s'
                 % ((incoming or 'AUSENTE')[:110], 'sim' if blown else 'nao'))
 
+def arm_arrival_blown_names_the_source(mod, shell, lines, worker_event):
+    """A LINHA ATRASADA DIZ DE QUE TAP/EIXO VEIO (2026-11-28).
+
+    MEDIDO no log do dono: `CAPTION_ARRIVAL_BLOWN age_ms=41998 budget_ms=1500
+    kind=live text="da"` -- 42 s de atraso, e a linha NAO dizia qual fonte o
+    produziu, logo "de que metade e' o defeito?" so' se respondia por deducao.
+    O worker JA' manda `source` no evento (`LineFormer(source=...)`); a linha
+    do veredicto passa a carrega-lo, e `-` quando a fonte nao existe (a via de
+    ficheiro e o `--selftest` nao tem tap).
+    """
+    lines[:] = []
+    now_ms = int(time.time() * 1000.0)
+    meta = dict(worker_event)
+    meta['tap_ms'] = now_ms - 3200
+    meta['source'] = 'device:WASAPI loopback: CABLE Input'
+    shell.on_worker_caption('quarenta segundos de atraso', meta)
+    named = take(lines, 'CAPTION_ARRIVAL_BLOWN')
+    lines[:] = []
+    bare = dict(worker_event)
+    bare['tap_ms'] = now_ms - 3200
+    shell.on_worker_caption('sem fonte declarada', bare)
+    unnamed = take(lines, 'CAPTION_ARRIVAL_BLOWN')
+    ok = (named is not None and 'source=device:WASAPI loopback: CABLE Input' in named
+          and unnamed is not None and field(unnamed, 'source') == '-')
+    return ok, ('com fonte=%s | sem fonte=%s'
+                % ((named or 'AUSENTE')[:150], (unnamed or 'AUSENTE')[:150]))
+
+
 def arm_paint_on_time(mod, shell, lines, worker_event):
     lines[:] = []
     now_ms = int(time.time() * 1000.0)
@@ -577,13 +605,17 @@ def main(argv):
                             "                self._caption_over_win -= 1",
                             "            if False:\n"
                             "                self._caption_over_win -= 1", 1)
+        # 2026-11-28: a chegada atrasada deixa de nomear a fonte. O mutante
+        # apaga SO' o campo `source=` da linha do veredicto.
+        mut12 = src.replace(
+            '                    f\'source={_m.get("source") or "-"} \'\n', '', 1)
         worker_src = io.open(WORKER, encoding='utf-8').read()
         mut5 = worker_src.replace('                    wall=_wall_tap,',
                                   '                    wall=time.time(),', 1)
         if (mut1 == src or mut2 == src or mut3 == src or mut4 == src
                 or mut5 == worker_src or mut6 == src or mut7 == src
                 or mut8 == src or mut9 == src or mut10 == src
-                or mut11 == src):
+                or mut11 == src or mut12 == src):
             print('NEG-ARM IMPOSSIVEL: a ancora do mutante nao esta no shell')
             shutil.rmtree(tmpdir, ignore_errors=True)
             return 2
@@ -611,6 +643,9 @@ def main(argv):
         mut11_path = os.path.join(tmpdir, 'sotto_webview_m11.py')
         with io.open(mut11_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut11)
+        mut12_path = os.path.join(tmpdir, 'sotto_webview_m12.py')
+        with io.open(mut12_path, 'w', encoding='utf-8', newline='\n') as handle:
+            handle.write(mut12)
         mut9_path = os.path.join(tmpdir, 'sotto_webview_m9.py')
         with io.open(mut9_path, 'w', encoding='utf-8', newline='\n') as handle:
             handle.write(mut9)
@@ -646,6 +681,9 @@ def main(argv):
                      lambda: arm_arrival(mod, shell, lines, worker_event)),
                     ('arrival-final-not-blamed',
                      lambda: arm_arrival_final_not_blamed(mod, shell, lines, worker_event)),
+                    ('arrival-blown-names-the-source',
+                     lambda: arm_arrival_blown_names_the_source(
+                         mod, shell, lines, worker_event)),
                     ('paint-lag-on-time',
                      lambda: arm_paint_on_time(mod, shell, lines, worker_event)),
                     ('paint-lag-blows-and-screams',
@@ -706,7 +744,9 @@ def main(argv):
                     (mut10_path, 'chegada de linha fechada julgada como atraso',
                      {'arrival-final-not-blamed'}),
                     (mut11_path, 'contador da janela sobe e nao desce',
-                     {'lag-stats-counters-bounded'}),):
+                     {'lag-stats-counters-bounded'}),
+                    (mut12_path, 'chegada atrasada sem a fonte',
+                     {'arrival-blown-names-the-source'}),):
                 print('=== mutante: %s' % why)
                 if path in (mut5_path, mut6_path):
                     # O mutante do WORKER julga-se pela arm de AST, nao por um
