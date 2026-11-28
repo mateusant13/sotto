@@ -505,8 +505,16 @@ def arm_g(mod, arm, ctx):
                   f'(got {shell.sidecar_reasons!r})')
 
         # ── the POSITIVE CONTROL: a resolved target passes the pid ──────────
+        # O ALVO E' RESOLVIDO PELO PRODUTO DENTRO DE `start_worker`, logo a UNICA
+        # amostra que pode correr e' a NOSSA: tirar `want_pid` aqui pergunta a
+        # tabela de processos VIVA duas vezes e a arvore mexe-se entre as duas.
+        # MEDIDO 2026-11-27 nesta maquina: numa corrida da bateria este braco deu
+        # `target_pid=2216 (wanted 3340)` e derrubou o mutante M4 que ele devia
+        # deixar passar; minutos depois, o MESMO codigo deu `NEG-ARM PASS` 4/4.
+        # O contrato nao e' "igual ao meu numero de agora", e' CONSISTENCIA: o pid
+        # que chega ao unico sitio de construcao e' o pid que o produto diz ter
+        # escolhido, e nenhum dos dois e' nulo.
         own = os.path.basename(sys.executable)
-        want_pid = mod.resolve_app_target(own)[0]
         args.app_target = own
         FakeBridge.calls.clear()
         logs.clear()
@@ -522,12 +530,21 @@ def arm_g(mod, arm, ctx):
         arm.check(len(FakeBridge.calls) == 1,
                   f'the construction site ran exactly once: {len(FakeBridge.calls)}')
         got_pid = FakeBridge.calls[-1].get('target_pid') if FakeBridge.calls else None
-        arm.check(got_pid == want_pid,
-                  f'target_pid={got_pid!r} (wanted {want_pid!r}) at the ONE '
-                  f'WorkerBridge construction site')
-        arm.check(any(f'APP_TARGET_RESOLVED value="{own}" chose={want_pid}' in line
-                      for line in logs),
+        arm.check(got_pid is not None,
+                  f'target_pid={got_pid!r}: the construction site received a pid')
+        chose = None
+        needle = 'APP_TARGET_RESOLVED value="%s" chose=' % own
+        for line in logs:
+            pos = line.find(needle)
+            if pos != -1:
+                tail = (line[pos + len(needle):].split() or [''])[0]
+                chose = int(tail) if tail.isdigit() else None
+                break
+        arm.check(chose is not None,
                   'APP_TARGET_RESOLVED names the chosen pid')
+        arm.check(got_pid == chose,
+                  f'target_pid={got_pid!r} differs from the pid the product '
+                  f'logged as chosen ({chose!r}): the two must be the same sample')
         arm.check(shell2.sidecar_reasons == ['default'],
                   f'the sidecars ride a STARTED worker exactly once '
                   f'(got {shell2.sidecar_reasons!r})')
