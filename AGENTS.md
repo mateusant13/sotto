@@ -1336,6 +1336,35 @@ declara `version: "4.6.0"`, medido 2026-11-27). As quatro etapas de revival dest
   veto mediu o walk inteiro. O caminho que mede e' `--scope scripts` SEM o tecto de populacao; o
   numero medido vive no recibo `_main/receipt-20261127-f6-revival-gate-and-codeintel.md`.
 
+## UM FILHO QUE SOBREVIVE AO SUPERVISOR E' UMA RESERVA QUE NINGUEM DONO (medido 2026-11-28)
+
+O watcher mandou o card de pressao de commit (medido 2026-11-28): `python.exe(45196)`, **2,52 GB de commit privado**
+parados 341,9 s sem CPU, 78,3 % de commit na maquina. O card estava certo e a atribuicao tambem:
+era um `sotto_worker.py` da MINHA arvore, filho do `44328` -- um worker orfao do laco de reinicio
+anterior (shell `47516`), que punha um segundo captador no mesmo endpoint
+(`OPEN_RETRY reason=device-in-use`). A classe esta curada (`222b8ba`): `_wait(child)` recusa uma
+morte que nao e' da crianca que o bridge possui (`BRIDGE_EXIT_STALE`) e `_spawn` recusa um segundo
+captador (`BRIDGE_SPAWN_REFUSED reason=one-capturer-live`).
+
+- **2026-11-28 · A reserva mede-se por processo, nao por nome de projeto.** `Win32_Process` deu
+  `ParentProcessId=44328`, `CreationDate 01:42:09`, `SessionId 3`,
+  `WorkingSetSize=57344 B` -- 56 KB residentes contra 2,52 GB de commit: e' **reserva de pagefile
+  sem consumidor**, exactamente o que o dono sente como congelamento.
+- **2026-11-28 · Um processo suspenso pelo governador nao se mata da lane.** MEDIDO no mesmo contexto:
+  `OpenProcess(PROCESS_TERMINATE)` devolve 0 com err=5 e `QUERY_LIMITED` tambem, `taskkill /F`
+  responde "Acesso negado" e `CIM GetOwner` devolve `ReturnValue 2` -- enquanto `55340` (worker vivo),
+  `73304` (sidecar) e `9752` (shell) abrem com `TERMINATE` sem problema. Nao e' elevacao: o handle
+  esta na mao de quem o suspendeu. A resposta e' o DM de volta com pid, pai, dono e os numeros e o
+  pedido de terminacao -- NAO um laco de `kill`.
+- **2026-11-28 · O dever que sobra para a lane:** depois de matar a shell, provar **zero workers orfaos**
+  (`psutil` + `sotto_worker.py` no cmdline) antes de largar outra; e declarar o tecto do que E'
+  devido: o worker imprime `THREADS process_budget=<n>`, o commit privado do modelo
+  (2,6 GB no load, ~1,0 GB residente parado) e o tempo de vida (= o da shell), com **no maximo um**
+  captador por construcao.
+- **2026-11-28 · Portoes:** `_main/bridge-pump-fault-oracle.py` arms `espera-velha-nao-manda-no-bridge` e
+  `um-dispositivo-um-captador` (+ `build_guard_mutant` no `--neg-arm`, que exige as tres guardas
+  vermelhas quando removidas).
+
 ## COMO APROFUNDAR
 `docs/AGENTS-archive-20261021.md` (a história completa, com os números verbatim) ·
 `docs/shell-contract.md` · `docs/model-specs/README.md` · `docs/audit/` · `_main/receipt-*.md`
