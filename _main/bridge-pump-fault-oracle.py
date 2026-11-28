@@ -136,6 +136,153 @@ def build_mutant(dst):
     return dst, None
 
 
+# ── O OUTRO IRMAO DO `_pump`: `_wait` e `_spawn` (2026-11-28) ────────────────
+#
+# MEDIDO no log do dono (`_main/webview-run.log`, sessao pid=47516):
+# `01:41:40 BRIDGE_EXIT pid=65764 ... killed=False` -- um filho que o bridge ja'
+# nao tratava como vivo -- seguido de `BRIDGE_DEATH` e `restart=5`, e as
+# `01:41:56` nasceu `pid=19976` com o `pid=44328` ainda a captar. Tres workers
+# sobre a mesma placa dao `device-in-use`, o worker fica mudo, o cao de guarda
+# mata-o, o `pending_error` (que so' uma legenda levanta) fica preso e a tela do
+# dono mostra `carregando modelo...` para sempre.
+#
+# A guarda que o `_pump` ja' tinha (`child` EXPLICITO, nao `self.child`) faltava
+# nas duas portas ao lado. Estes bracos conduzem o objecto REAL do bridge.
+
+
+class _FakeChild:
+    """Um filho com as tres coisas que a supervisao lhe pede."""
+
+    def __init__(self, pid, rc=None):
+        self.pid = pid
+        self._rc = rc
+        self.stdout = None
+        self.stderr = None
+
+    def wait(self, timeout=None):
+        return self._rc if self._rc is not None else 0
+
+    def poll(self):
+        return self._rc
+
+    def terminate(self):
+        pass
+
+
+def _bare_bridge(mod, logs):
+    b = mod.WorkerBridge(command=sys.executable, worker_path="", log=logs.append)
+    b.log = logs.append
+    b.stderr_tail = []
+    b.spawns = 1
+    b.captions = 0
+    b.statuses = 0
+    b.malformed = 0
+    b.deaths = 0
+    b.pending_error = None
+    b.last_error = {"state": "x", "text": "t", "body": ""}
+    b.last_no_audio = None
+    b._restart_timer = None
+    b.capturing = False
+    b.stopped = False
+    b.killed = False
+    b.loaded = True
+    return b
+
+
+def arm_stale_wait_does_not_own_the_bridge(mod):
+    """A morte de um filho que o bridge ja' nao possui nao tem veredito."""
+    logs, calls = [], []
+    b = _bare_bridge(mod, logs)
+    b._schedule_restart = lambda *a, **k: calls.append((a, k))
+    b._status = lambda *a, **k: None
+    stale, live = _FakeChild(1111, rc=1), _FakeChild(2222, rc=None)
+    b.child = live
+    b._wait(stale)
+    bad = []
+    if b.child is not live:
+        bad.append("self.child largado para pid=%r" % getattr(b.child, "pid", None))
+    if calls:
+        bad.append("agendou um restart para a morte de OUTRO filho: %r" % (calls,))
+    if b.pending_error is not None:
+        bad.append("escreveu pending_error (a morte velha virou a do vivo)")
+    if b.deaths:
+        bad.append("contou deaths=%d para a morte de outro filho" % b.deaths)
+    if not any("BRIDGE_EXIT_STALE" in l for l in logs):
+        bad.append("sem BRIDGE_EXIT_STALE -- a recusa nao se nomeia")
+    if any(l.startswith("BRIDGE_EXIT pid=1111") for l in logs):
+        bad.append("tratou a morte velha como BRIDGE_EXIT do filho vivo")
+    # E O CAMINHO LEGITIMO CONTINUA A AGIR: a guarda nao pode parir um bridge mudo.
+    logs.clear()
+    calls.clear()
+    b.child = live
+    b._wait(live)
+    if b.child is not None:
+        bad.append("a morte do filho VIVO nao largou self.child")
+    if not calls:
+        bad.append("a morte do filho VIVO nao agendou restart")
+    return bad
+
+
+def arm_spawn_refuses_a_second_capturer(mod):
+    """Um dispositivo, um captador: `_spawn` recusa com um filho vivo."""
+    logs = []
+    b = _bare_bridge(mod, logs)
+    b.worker_path = os.path.join(REPO, "worker", "sotto_worker.py")
+    b.extra_args = []
+    b.start_reason = "start"
+    b.capture_requested = False
+    live = _FakeChild(3333, rc=None)
+    b.child = live
+    before = b.spawns
+    returned = b._spawn()
+    bad = []
+    if not any("BRIDGE_SPAWN_REFUSED reason=one-capturer-live" in l for l in logs):
+        bad.append("sem BRIDGE_SPAWN_REFUSED reason=one-capturer-live")
+    if b.spawns != before:
+        bad.append("spawns subiu de %d para %d com um captador vivo" % (before, b.spawns))
+    if returned is not live:
+        bad.append("devolveu %r em vez do filho vivo" % (returned,))
+    if b.child is not live:
+        bad.append("trocou self.child com um captador vivo")
+    return bad
+
+
+WAIT_GUARD = (
+    "        if self.child is not child:\n"
+    "            self.log(f'BRIDGE_EXIT_STALE pid={child.pid} rc={rc} '\n"
+)
+WAIT_GUARD_END = "            return\n        self.last_exit = rc\n"
+SPAWN_GUARD_START = "        _live = self.child\n"
+SPAWN_GUARD_END = "                return _live\n"
+
+
+def build_guard_mutant(dst):
+    """O shell com as DUAS guardas novas removidas -- o codigo de antes da cura."""
+    with open(SHELL, "r", encoding="utf-8") as fh:
+        raw = fh.read()
+    crlf = "\r\n" in raw
+    text = raw.replace("\r\n", "\n")
+    i = text.find(WAIT_GUARD)
+    if i < 0:
+        return None, "a guarda do _wait nao esta no sitio esperado"
+    j = text.find(WAIT_GUARD_END, i)
+    if j < 0:
+        return None, "o fim da guarda do _wait nao foi encontrado"
+    text = text[:i] + "        self.last_exit = rc\n" + text[j + len(WAIT_GUARD_END):]
+    i = text.find(SPAWN_GUARD_START)
+    if i < 0:
+        return None, "a recusa do _spawn nao esta no sitio esperado"
+    j = text.find(SPAWN_GUARD_END, i)
+    if j < 0:
+        return None, "o fim da recusa do _spawn nao foi encontrado"
+    text = text[:i] + text[j + len(SPAWN_GUARD_END):]
+    if crlf:
+        text = text.replace("\n", "\r\n")
+    with open(dst, "w", encoding="utf-8", newline="") as fh:
+        fh.write(text)
+    return dst, None
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--neg-arm", action="store_true",
@@ -154,18 +301,40 @@ def main(argv=None):
         print("VERDICT: CANNOT-MEASURE why=mutant-build -- %s" % why)
         return 3
 
+    guard_path = os.path.join(tmpdir, "_bridge-guard-mutant.py")
+    built_g, why_g = build_guard_mutant(guard_path)
+    if built_g is None:
+        print("VERDICT: CANNOT-MEASURE why=guard-mutant-build -- %s" % why_g)
+        return 3
+
     if args.neg_arm:
         mod = _load(mutant_path)
         # `arm_mutant_dies` devolve os PROBLEMAS, nao o sucesso: lista vazia
         # significa "o mutante morreu como tinha de morrer", que e' exactamente
         # o que o braco negativo tem de provar -- apanhar = rc 1.
         bad = arm_mutant_dies(mod)
-        if not bad:
-            print("NEG-ARM: PASS -- o codigo sem guarda morre, como tem de morrer")
-            return 1
-        print("NEG-ARM: FAIL -- o mutante NAO derrubou o canal; o braco nao mede nada")
-        print("   (%s)" % bad[0])
-        return 0
+        caught = not bad
+        if caught:
+            print("NEG-ARM: PASS -- o codigo sem guarda do _pump morre, como tem de morrer")
+        else:
+            print("NEG-ARM: FAIL -- o mutante NAO derrubou o canal; o braco nao mede nada")
+            print("   (%s)" % bad[0])
+        mod_g = _load(guard_path)
+        for label, arm in (("espera-velha-nao-manda-no-bridge",
+                            arm_stale_wait_does_not_own_the_bridge),
+                           ("um-dispositivo-um-captador",
+                            arm_spawn_refuses_a_second_capturer)):
+            # Sem as guardas o braco TEM de encontrar problemas; lista vazia
+            # aqui significa um braco que nao mede o produto.
+            problems = arm(mod_g)
+            got = bool(problems)
+            caught = caught and got
+            print("  %-4s %-38s -> %s" % ('RED' if got else 'GREEN', label,
+                                          problems[0] if problems else 'passou sem guarda'))
+        print()
+        print("NEG-ARM: %s" % ('PASS -- as tres guardas ficam vermelhas quando removidas'
+                                if caught else 'FAIL'))
+        return 1 if caught else 0
 
     ok = True
     mod = _load(SHELL)
@@ -176,6 +345,16 @@ def main(argv=None):
     else:
         print("ARM linha-ma-nao-fecha-o-canal            PASS  "
               "2 linhas consumidas, 0 BRIDGE_PUMP_DIED, perda contada")
+
+    for label, arm in (("espera-velha-nao-manda-no-bridge",
+                        arm_stale_wait_does_not_own_the_bridge),
+                       ("um-dispositivo-um-captador", arm_spawn_refuses_a_second_capturer)):
+        bad_a = arm(mod)
+        if bad_a:
+            ok = False
+            print("ARM %-38s FAIL  %s" % (label, bad_a[0]))
+        else:
+            print("ARM %-38s PASS" % label)
 
     mod_m = _load(mutant_path)
     bad_m = arm_mutant_dies(mod_m)

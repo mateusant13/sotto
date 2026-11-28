@@ -25385,6 +25385,21 @@ class WorkerBridge:
             self._schedule_restart('missing')
             return
 
+        # UM DISPOSITIVO, UM CAPTADOR (2026-11-28). `_restart` ja' recusa com
+        # `self.child is not None`, mas o `_spawn` e' a PORTA UNICA e nao
+        # perguntava nada: um caminho que chegasse aqui com um filho vivo
+        # deixava dois workers a captar a mesma placa. MEDIDO: tres vivos ao
+        # mesmo tempo (65764/44328/19976) e `device-in-use` na escada.
+        _live = self.child
+        if _live is not None:
+            try:
+                _live_rc = _live.poll()
+            except Exception:  # noqa: BLE001 -- shim sem poll = assume vivo
+                _live_rc = None
+            if _live_rc is None:
+                self.log(f'BRIDGE_SPAWN_REFUSED reason=one-capturer-live '
+                         f'pid={getattr(_live, "pid", None)}')
+                return _live
         self.state = 'spawning'
         self.spawns += 1
         # UM `model-loading` SO' VALE ANTES DO PRIMEIRO `model-loaded` DESTE
@@ -25536,8 +25551,8 @@ class WorkerBridge:
             # line stamped with the WRONG pid is an unattributable number.
             threading.Thread(target=self._pump, args=(stream, name, self.child),
                              name=f'sotto-worker-{name}', daemon=True).start()
-        threading.Thread(target=self._wait, name='sotto-worker-wait',
-                         daemon=True).start()
+        threading.Thread(target=self._wait, args=(self.child,),
+                         name='sotto-worker-wait', daemon=True).start()
 
         self._arm_silence()
         # REPORTED (row #13, 2026-10-11): `_spawn` used to fall out with None on
@@ -26431,11 +26446,28 @@ class WorkerBridge:
                               'output within the silence window.'})
         self._kill_and_restart('silent')
 
-    def _wait(self):
-        child = self.child
+    def _wait(self, child=None):
+        child = child if child is not None else self.child
         if child is None:
             return
         rc = child.wait()
+        # UMA ESPERA QUE NAO E' DO FILHO VIVO NAO TEM VEREDITO (2026-11-28,
+        # MEDIDO). Esta thread lia `self.child` no inicio e voltava a agir
+        # quando o filho VELHO morria: o `self.child = None` incondicional
+        # largava o ponteiro para o worker VIVO, e o restart que se seguia
+        # punha um SEGUNDO captador no mesmo dispositivo. Medido em
+        # `_main/webview-run.log` (01:41:40): o `_wait` do pid=65764 (morto)
+        # escreveu `BRIDGE_EXIT`/`BRIDGE_DEATH` e agendou `restart=5`
+        # enquanto o pid=44328 captava, e as 01:41:56 nasceu o pid=19976 --
+        # tres workers sobre a mesma placa, `device-in-use`, silencio e kill
+        # em ciclo (`carregando modelo...` preso na tela do dono). O irmao
+        # desta guarda ja' existia no `_pump`, que recebe o child EXPLICITO
+        # pelo mesmo motivo; a porta ao lado ficou sem ela.
+        if self.child is not child:
+            self.log(f'BRIDGE_EXIT_STALE pid={child.pid} rc={rc} '
+                     f'current={getattr(self.child, "pid", None)} '
+                     'why=not-the-child-this-bridge-owns')
+            return
         self.last_exit = rc
         killed, self.killed = self.killed, False
         self.log(f'BRIDGE_EXIT pid={child.pid} rc={rc} killed={killed} '
