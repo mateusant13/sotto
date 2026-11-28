@@ -1595,6 +1595,21 @@ if exist _main\death-hold-lift-oracle.py (
 call :step red-as-expected-death-hold-lift 1 "_main\death-hold-lift-oracle.py;app\webview\sotto_webview.py" "%OUT%\death-hold-lift-neg.log" python _main\death-hold-lift-oracle.py --neg-arm
 call :expectred red-as-expected-death-hold-lift !STEP_RC! "%OUT%\death-hold-lift-neg.log" "NEG-ARM PASS"
 ) else ( call :expectred red-as-expected-death-hold-lift MISSING "%OUT%\death-hold-lift-neg.log" "NEG-ARM PASS" )
+REM `history-truncation` -- A PAGINA QUE NAO DIZ QUE HA' MAIS E' A TRUNCAGEM (medido
+REM 2026-11-28, do mapa do codeintel). `history-store.js` cortava em tail(400)/search(200)/
+REM exportBody(400) com um `break` seco e o twin Python fazia o mesmo, logo o painel da
+REM direita mostrava parte de uma sessao como se fosse toda -- *"o painel da direita fica
+REM perdendo historico"* (dono, 2026-11-05). Agora ha' `truncated` medido lendo uma entrada
+REM a mais e um `cursor` para a pagina seguinte, nos dois twins. O fixture e' um root
+REM temporario; o mutante apaga as duas caudas e exige VERMELHO.
+if exist _main\history-truncation-oracle.py (
+call :step history-truncation 0 "_main\history-truncation-oracle.py;app\panel\history-store.js;app\panel\panel.js;app\webview\sotto_webview.py" "%OUT%\history-truncation.log" python _main\history-truncation-oracle.py
+call :record history-truncation !STEP_RC!
+) else ( call :record history-truncation MISSING )
+if exist _main\history-truncation-oracle.py (
+call :step red-as-expected-history-truncation 1 "_main\history-truncation-oracle.py;app\panel\history-store.js;app\webview\sotto_webview.py" "%OUT%\history-truncation-neg.log" python _main\history-truncation-oracle.py --neg-arm
+call :expectred red-as-expected-history-truncation !STEP_RC! "%OUT%\history-truncation-neg.log" "NEG-ARM PASS"
+) else ( call :expectred red-as-expected-history-truncation MISSING "%OUT%\history-truncation-neg.log" "NEG-ARM PASS" )
 REM `log-rotation` -- UMA ROTACAO QUE NAO ACONTECE NAO PODE SER MUDA (medido 2026-11-27,
 REM triage row 1). O bloco do tecto de 64 MB tinha `except Exception: pass`: a falha nao
 REM aparecia em lado nenhum e o log continuava a crescer sobre o volume onde vivem os dados

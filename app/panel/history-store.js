@@ -350,15 +350,36 @@ function read(file) {
   }
 }
 
+/**
+ * THE PAGE CURSOR (2026-11-28). The feed used to load the newest `HISTORY_LOAD`
+ * entries and say NOTHING about the rest, so the transcript silently ended in the
+ * middle of the session -- the owner's *"o painel da direita fica perdendo
+ * historico"* (2026-11-05). A cursor names the OLDEST row already on screen; the
+ * next page is every row STRICTLY older than it, from the same stream.
+ *
+ * Zero-padded `date`/`hour`/`time` make the joined key compare like a tuple, so
+ * this is a string compare, not a Date parse per row.
+ */
+function entryKey(entry) {
+  return [entry && entry.date, entry && entry.hour, entry && entry.time]
+    .map((part) => String(part == null ? '' : part)).join(' ');
+}
+
+function isOlder(entry, cursor) {
+  if (!cursor) return true;
+  return entryKey(entry) < entryKey(cursor);
+}
+
 /** NEWEST-first entry stream: reverse file order AND line order. */
-function* entries() {
+function* entries(before) {
+  const cursor = before && typeof before === 'object' ? before : null;
   const all = files();
   for (let i = all.length - 1; i >= 0; i -= 1) {
     const { date, hour, path: file } = all[i];
     const lines = read(file);
     for (let j = lines.length - 1; j >= 0; j -= 1) {
       const match = LINE_RE.exec(lines[j]);
-      if (match) {
+      if (match && isOlder({ date, hour, time: match[1] }, cursor)) {
         // The provenance comment is the FILE's, not the feed's: strip it so
         // search and the feed still see the sentence (M8 — see `provenance`).
         yield {
@@ -375,32 +396,50 @@ function* entries() {
   }
 }
 
-function tail(limit = 400) {
+function tail(limit = 400, before = null) {
   const want = Math.max(1, Number(limit) || 400);
   const out = [];
-  for (const entry of entries()) {
+  let more = false;
+  for (const entry of entries(before)) {
+    // One entry PAST the page is what tells "exactly `want` left" from "there is
+    // more": a cap that cannot say which is a silent truncation.
+    if (out.length >= want) {
+      more = true;
+      break;
+    }
     out.push(entry);
-    if (out.length >= want) break;
   }
   out.reverse(); // oldest-first, for the feed
-  return { entries: out, root: ROOT };
+  const oldest = out.length ? out[0] : null;
+  return {
+    entries: out,
+    root: ROOT,
+    truncated: more,
+    cursor: oldest ? { date: oldest.date, hour: oldest.hour, time: oldest.time } : null,
+  };
 }
 
 function search(query, limit = 200) {
   const needle = String(query == null ? '' : query).trim().toLowerCase();
   const want = Math.max(1, Number(limit) || 200);
   const hits = [];
+  let more = false;
   if (needle) {
     for (const entry of entries()) {
       const contextText = Object.values(entry.context || {}).join(' ').toLowerCase();
       if (entry.text.toLowerCase().includes(needle)
           || (contextText && contextText.includes(needle))) {
+        // A DROPPED MATCH IS THE TRUNCATION: the page is full and this row would
+        // have been in it. Breaking silently was the HIGH finding.
+        if (hits.length >= want) {
+          more = true;
+          break;
+        }
         hits.push(entry);
-        if (hits.length >= want) break;
       }
     }
   }
-  return { query, hits, root: ROOT };
+  return { query, hits, root: ROOT, truncated: more, limit: want };
 }
 
 /** Compact text export, oldest-first — the Node twin of `history_export`. */
@@ -408,9 +447,13 @@ function exportBody(format = 'txt', limit = 400) {
   const fmt = String(format == null ? 'txt' : format).trim().toLowerCase() === 'md' ? 'md' : 'txt';
   const want = Math.min(Math.max(1, Number(limit) || 400), 5000);
   const out = [];
+  let more = false;
   for (const entry of entries()) {
+    if (out.length >= want) {
+      more = true;
+      break;
+    }
     out.push(entry);
-    if (out.length >= want) break;
   }
   out.reverse();
   const lines = out.map((entry) => {
@@ -427,7 +470,17 @@ function exportBody(format = 'txt', limit = 400) {
     const label = bits.length ? ` · ${bits.join(' · ')}` : '';
     return `${fmt === 'md' ? '- ' : ''}[${entry.date} ${entry.time}] ${entry.text}${label}`;
   });
-  return { format: fmt, text: lines.join('\n'), entries: lines.length, root: ROOT };
+  // The partial export SAYS it is partial: a file claiming to be "the transcript"
+  // while quietly holding the newest 400 of 40000 is the export half of the same
+  // defect (panels refill, exports get mailed).
+  return {
+    format: fmt,
+    text: lines.join('\n'),
+    entries: lines.length,
+    root: ROOT,
+    truncated: more,
+    limit: want,
+  };
 }
 
 function root() {

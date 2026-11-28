@@ -906,9 +906,17 @@ Duas baterias: **`_main\_audit-verify-all.cmd`** (principal) e **`instruments-ba
 ultima linha, e confirmar que so ha UM `steps=`. **Um passo saltado nao e um portao que passou.**
 Um passo que descreve a corrida corre DEPOIS dela; as linhas de estado vivem no fim fisico da bateria.
 
-- **PIN do ficheiro (re-medido 2026-11-28, depois do par `death-hold-lift`):**
-  `_main\_audit-verify-all.cmd` = **477953 B**, **5431 CRLF** / 0 bare LF,
-  sha256 `E38C44DB7E0122A068D671D499DEB5692321A4064D6AA1CB2D8C6CF366249AAF`.
+- **PIN do ficheiro (re-medido 2026-11-28, depois do par `history-truncation`):**
+  `_main\_audit-verify-all.cmd` = **479427 B**, **5446 CRLF** / 0 bare LF,
+  sha256 `C26B11F1A9DD5B49D8B403962D58C84C98516D48959BFABDE6B651289EAE522F`.
+  (O par `history-truncation` + `red-as-expected-history-truncation` fecha a classe
+  que o mapa do codeintel marcou HIGH a 2026-11-28: `history-store.js` cortava em
+  `tail(400)`/`search(200)`/`exportBody(400)` com um `break` seco e o twin Python
+  fazia o mesmo, logo o painel da direita mostrava parte de uma sessao como se fosse
+  toda. Agora as duas caudas devolvem `truncated` (medido lendo UMA entrada a mais)
+  e `cursor`, o painel pagina ate' `MAX_HISTORY` (2000) e o exporte diz que e'
+  parcial. O oraculo e' diferencial: o mesmo fixture tem de dar a mesma ordem, o
+  mesmo `truncated` e o mesmo cursor no Node e no Python.)
   (O par `death-hold-lift` + `red-as-expected-death-hold-lift` fecha a classe
   medida a 2026-11-28: uma morte ordenada pela SHELL armava `pending_error` e
   `_consume` HELDAVA todos os warmups do substituto atras dele -- cinco

@@ -12069,8 +12069,11 @@ BOOTSTRAP_JS = r"""
         return historyCall('history-append',
           { text: String(text == null ? '' : text), meta: meta || {} });
       },
-      tail: function (limit) {
-        return historyCall('history-tail', { limit: Number(limit) || 400 });
+      tail: function (limit, before) {
+        return historyCall('history-tail', {
+          limit: Number(limit) || 400,
+          before: before && typeof before === 'object' ? before : null,
+        });
       },
       search: function (query, limit) {
         return historyCall('history-search',
@@ -13498,7 +13501,8 @@ class SottoHost:
     def _history_tail(self, payload):
         payload = payload or {}
         self._history_reply(
-            payload, self._shell.history_tail(int(payload.get('limit') or 400)))
+            payload, self._shell.history_tail(int(payload.get('limit') or 400),
+                                              payload.get('before')))
 
     def _history_search(self, payload):
         payload = payload or {}
@@ -13584,6 +13588,28 @@ def search_layer_cap(rank, limit):
     """
     fraction, floor = SEARCH_LAYER_CAPS[rank], SEARCH_LAYER_MIN[rank]
     return max(floor, int(math.floor(limit * fraction)))
+
+
+#: O CURSOR DA PAGINA (2026-11-28). A cauda carregava as `HISTORY_LOAD` mais
+#: recentes e nao dizia NADA sobre o resto, logo o historico do painel acabava a
+#: meio da sessao -- o dono, verbatim (2026-11-05): *"o painel da direita fica
+#: perdendo historico"*. O cursor nomeia a linha MAIS ANTIGA ja' na tela; a
+#: pagina seguinte e' toda linha ESTRITAMENTE mais antiga que ele, no mesmo
+#: stream newest-first que a cauda le. Com `date`/`hour`/`time` de largura fixa a
+#: chave compara como uma tupla, sem um parse de data por linha.
+HISTORY_CURSOR_FIELDS = ('date', 'hour', 'time')
+
+
+def history_sort_key(entry):
+    """`YYYY-MM-DD HH HH:MM:SS` -- zero-padded, logo comparavel como string."""
+    return ' '.join(str((entry or {}).get(k) or '') for k in HISTORY_CURSOR_FIELDS)
+
+
+def history_cursor_of(entry):
+    """O cursor que a proxima pagina consome, ou `None` sem linha nenhuma."""
+    if not entry:
+        return None
+    return {k: entry.get(k) for k in HISTORY_CURSOR_FIELDS}
 
 
 def _caption_replay_allowed(painted, age_ms, max_s, paused=False,
@@ -17336,15 +17362,31 @@ class SottoShell:
                            'via': (re.search(r'\bvia=(pc|youtube|external)\b', line)
                                    or [None, 'pc'])[1]}
 
-    def history_tail(self, limit=400):
+    def history_tail(self, limit=400, before=None):
+        """A cauda MAIS a resposta honesta sobre o que ficou de fora.
+
+        `truncated` e' medido lendo UMA entrada a mais (o truque do `tail` do
+        Node), e `cursor` e' a linha mais antiga devolvida -- `before` na chamada
+        seguinte devolve a pagina anterior. Uma pagina que nao pode dizer se ha'
+        mais e' a truncagem silenciosa que o mapa do codeintel marcou como HIGH.
+        """
         limit = max(1, int(limit))
+        cursor_key = history_sort_key(before) if isinstance(before, dict) else ''
         entries = []
+        truncated = False
         for entry in self._history_entries():
-            entries.append(entry)
+            if cursor_key and history_sort_key(entry) >= cursor_key:
+                # ESTRITAMENTE abaixo do cursor: uma linha ja' mostrada nao volta,
+                # nem quando duas partilham o mesmo segundo.
+                continue
             if len(entries) >= limit:
+                truncated = True
                 break
+            entries.append(entry)
         entries.reverse()  # back to oldest-first for the feed
-        return {'entries': entries, 'root': HISTORY_ROOT}
+        return {'entries': entries, 'root': HISTORY_ROOT,
+                'truncated': truncated,
+                'cursor': history_cursor_of(entries[0] if entries else None)}
 
     def history_search(self, query, limit=200):
         """THE SEARCH. Owner, 2026-10-18: *"eu quero que ele ache"*.
@@ -17380,6 +17422,7 @@ class SottoShell:
         cap = max(1, int(limit))
         caps = [search_layer_cap(r, cap) for r in (0, 1, 2)]
         buckets = ([], [], [])     # 0 literal, 1 phonetic, 2 fuzzy
+        truncated = False
         if query_words:
             for entry in self._history_entries():
                 rank = search_match_rank(entry['text'], folded_query, query_words)
@@ -17400,12 +17443,21 @@ class SottoShell:
                 bucket = buckets[rank]
                 if len(bucket) < caps[rank]:
                     bucket.append(dict(entry, match=('literal', 'phonetic', 'fuzzy')[rank]))
+                else:
+                    # A MATCH THAT DID NOT FIT IS THE TRUNCATION, said by name: a
+                    # page full of results that hides its own count is the HIGH
+                    # finding this answers.
+                    truncated = True
                 if all(len(b) >= c for b, c in zip(buckets, caps)):
                     # Every bucket is at its own cap: no later entry can enter the
                     # result set at ANY rank, because buckets fill in stream order.
+                    # The scan stops here, so it cannot prove there is nothing
+                    # more -- `truncated` says so rather than implying "no more".
+                    truncated = True
                     break
         hits = buckets[0] + buckets[1] + buckets[2]
-        return {'query': query, 'hits': hits, 'root': HISTORY_ROOT}
+        return {'query': query, 'hits': hits, 'root': HISTORY_ROOT,
+                'truncated': truncated, 'limit': cap}
 
     def history_export(self, fmt='txt', limit=400):
         """The transcript as a COMPACT TEXT BODY, oldest-first (2026-11-09).
@@ -17435,10 +17487,12 @@ class SottoShell:
         # them -- the review's D1: `history_export('txt', 2)` returned the two
         # oldest entries, newest-first, instead of the two newest, oldest-first.)
         entries = []
+        truncated = False
         for entry in self._history_entries():
-            entries.append(entry)
             if len(entries) >= limit:
+                truncated = True
                 break
+            entries.append(entry)
         entries.reverse()
         lines = []
         for entry in entries:
@@ -17462,8 +17516,12 @@ class SottoShell:
             if label:
                 line += ' · ' + label
             lines.append(('- ' if fmt == 'md' else '') + line)
+        # O EXPORTE PARCIAL DIZ QUE E' PARCIAL: um ficheiro que se apresenta como
+        # "a transcricao" e guarda em silencio as 400 mais recentes de 40000 e' a
+        # mesma truncagem, so' que num ficheiro que pode ser enviado a alguem.
         return {'format': fmt, 'text': '\n'.join(lines),
-                'entries': len(lines), 'root': HISTORY_ROOT}
+                'entries': len(lines), 'root': HISTORY_ROOT,
+                'truncated': truncated, 'limit': limit}
 
     def history_export_file(self, fmt='txt', limit=400):
         """Write the compact export under the history root; return its path.
@@ -17475,7 +17533,7 @@ class SottoShell:
         body = self.history_export(fmt, limit)
         if not body.get('entries'):
             return {'path': '', 'entries': 0, 'format': body.get('format', 'txt'),
-                    'root': HISTORY_ROOT}
+                    'root': HISTORY_ROOT, 'truncated': body.get('truncated', False)}
         ext = 'md' if body.get('format') == 'md' else 'txt'
         stamp = time.strftime('%Y%m%d-%H%M%S')
         path = os.path.join(HISTORY_ROOT, 'sotto-transcript-%s.%s' % (stamp, ext))
@@ -17486,11 +17544,14 @@ class SottoShell:
         except OSError as exc:  # noqa: BLE001 -- a refused write is a NAMED refusal
             warn('HISTORY_EXPORT_FAILED path=%s err=%s' % (path, exc))
             return {'path': '', 'entries': 0, 'format': body.get('format', 'txt'),
-                    'root': HISTORY_ROOT, 'error': str(exc)}
-        log('HISTORY_EXPORT path=%s entries=%d format=%s'
-            % (path, body['entries'], body.get('format')))
+                    'root': HISTORY_ROOT, 'error': str(exc),
+                    'truncated': body.get('truncated', False)}
+        log('HISTORY_EXPORT path=%s entries=%d format=%s truncated=%s'
+            % (path, body['entries'], body.get('format'),
+               str(bool(body.get('truncated'))).lower()))
         return {'path': path, 'entries': body['entries'],
-                'format': body.get('format', 'txt'), 'root': HISTORY_ROOT}
+                'format': body.get('format', 'txt'), 'root': HISTORY_ROOT,
+                'truncated': body.get('truncated', False)}
 
     def reply_history(self, history_id, payload):
         self.exec_js(f'window.__sotto_history({json.dumps(history_id)}, '

@@ -61,10 +61,19 @@ bootMark('panel-js');
  * meia hora em vez de evapora-la enquanto ele le'.
  */
 const MAX_CAPTIONS = 1200;
-/** Cap on history entries held in the feed (newest kept). */
-const MAX_HISTORY = 500;
-/** How many entries a fresh `tail()` loads. */
+/** Cap on history entries held in the feed (newest kept).
+ *
+ *  THE CEILING IS DECLARED, NOT IMPLIED (2026-11-28). It used to be 500 while a
+ *  fresh `tail()` loaded 400: the transcript ended a little over one page into a
+ *  session and NOTHING said so -- the owner's *"o painel da direita fica perdendo
+ *  historico"* (2026-11-05). The feed now pages until the store is exhausted or
+ *  this ceiling is reached, and the ceiling is the only thing that stops it.
+ */
+const MAX_HISTORY = 2000;
+/** How many entries one `tail()` page carries. */
 const HISTORY_LOAD = 400;
+/** How far back the startup load pages before it gives up: `MAX_HISTORY` rows. */
+const HISTORY_MAX_ROWS = MAX_HISTORY;
 /**
  * HOW FAR BACK THE FEED GOES.
  *
@@ -2314,12 +2323,31 @@ function applyHistoryTail(entries) {
 
 function loadHistory() {
   if (!historyApi || !historyApi.tail) return;
-  historyApi
-    .tail(HISTORY_LOAD)
-    .then((r) => {
-      applyHistoryTail(normaliseEntries(r));
-    })
-    .catch((err) => setHistoryNote('Transcript read failed: ' + errorText(err)));
+  // PAGE UNTIL THE STORE SAYS THERE IS NOTHING OLDER (2026-11-28). One `tail()`
+  // was 400 rows and a silent stop; `truncated`/`cursor` are the store's own
+  // answer, so the feed keeps asking while there is more, up to MAX_HISTORY, and
+  // renders ONCE (a render per page would re-pin the list N times at startup).
+  // Pages arrive newest-first; the feed is oldest-first.
+  let acc = [];
+  let pages = 0;
+  const step = (before) => {
+    historyApi
+      .tail(HISTORY_LOAD, before)
+      .then((r) => {
+        const page = normaliseEntries(r);
+        acc = page.concat(acc);
+        pages += 1;
+        const capped = r && typeof r.truncated === 'boolean'
+          ? r.truncated : page.length >= HISTORY_LOAD;
+        if (capped && r && r.cursor && pages * HISTORY_LOAD < HISTORY_MAX_ROWS) {
+          step(r.cursor);
+          return;
+        }
+        applyHistoryTail(acc);
+      })
+      .catch((err) => setHistoryNote('Transcript read failed: ' + errorText(err)));
+  };
+  step(null);
 }
 
 /** A shell that has no history store still shows the captions it saw this run. */
@@ -4149,7 +4177,11 @@ function exportTranscript() {
         : 'Nothing to export: the transcript is empty');
       return;
     }
-    const capped = count >= 5000;
+    // THE STORE SAYS SO, NOT THE ARITHMETIC: `count >= 5000` guessed at the cap
+    // from the number it got back, so a store of exactly 5000 lines claimed a
+    // truncation that never happened, and any partial export under the cap went
+    // out as if it were the whole transcript.
+    const capped = Boolean(res && res.truncated);
     setHistoryNote(`Exported ${count} line${count === 1 ? '' : 's'}`
       + (capped ? ' (newest 5000)' : '') + ` · ${path}`);
     if (typeof historyApi.reveal === 'function') historyApi.reveal(path);
