@@ -143,9 +143,18 @@ def _live_probe(sw, seconds=2.0):
             return None
         n = {"b": 0}
         tap, error = sw._open_tap_bounded(proc[0], lambda b: n.__setitem__("b", n["b"] + 1),
-                                         block_ms=40)
+                                          block_ms=40)
+        # UM OPEN QUE NAO VOLTA NAO E' UMA ENTREGA VAZIA (medido 2026-11-27, run #8:
+        # `TAP_OPEN_TIMEOUT device='process loopback: pid 27380 (Discord.exe)'
+        # api=None in_s=4.00` e o braco foi a FAIL -- mas o instrumento nem chegou
+        # a medir, e um Discord em silencio nao renderiza bloco nenhum para o
+        # loopback de processo). As duas populacoes vazias dizem o proprio nome:
+        # `open-blocked` e `silent-target`. So' um tap ABERTO com blocos prova o
+        # caminho; sem isso o veredicto e' CANNOT-MEASURE, nunca um vermelho pela
+        # meteorologia da maquina.
         if tap is None:
-            return False
+            print("   A14 detail: open nao voltou (%r) -- CANNOT-MEASURE" % (error,))
+            return "cannot", "open-blocked"
         _t.sleep(seconds)
         got = n["b"]
         try:
@@ -153,11 +162,12 @@ def _live_probe(sw, seconds=2.0):
             tap.close()
         except Exception:                     # noqa: BLE001
             pass
-        print("   A14 detail: pid=%s blocks=%d pump_exited=%s" % (pid, got, getattr(tap, "pump_exited", None)))
-        return got > 0
+        print("   A14 detail: pid=%s blocks=%d pump_exited=%s"
+              % (pid, got, getattr(tap, "pump_exited", None)))
+        return ("pass", "blocks=%d" % got) if got > 0 else ("cannot", "silent-target")
     except Exception as exc:                  # noqa: BLE001
         print("   A14 detail: probe falhou: %r" % (exc,))
-        return False
+        return "cannot", "probe-error"
 
 
 
@@ -243,10 +253,17 @@ def run() -> int:
         # (`_open_tap_bounded`) tem de entregar blocos. Sem alvo, SKIP declarado
         # -- e um skip nao e' um PASS.
         live = _live_probe(sw)
+        # `None` = nao ha' alvo; uma tupla = (veredicto, razao) e so' o veredicto
+        # "pass" conta como caso julgado. Um skip e' um skip, nunca um verde: a
+        # bateria conta SKIPPED em separado e o veredicto nao mente.
         if live is None:
-            print("SKIP A14 sem programa alvo vivo nesta maquina -- o efeito nao foi medido")
+            print("SKIP A14 sem programa alvo vivo nesta maquina "
+                  "-- CANNOT-MEASURE reason=no-live-target")
+        elif live[0] == "pass":
+            arm(True, "A14 o caminho de producao entrega blocos")
         else:
-            arm(live, "A14 o caminho de producao entrega blocos")
+            print("SKIP A14 CANNOT-MEASURE reason=%s -- o efeito nao foi medido"
+                  % (live[1],))
 
     ok = all(cases)
     print("\nPROCESS-TARGET VERDICT: %s (%d/%d)"
