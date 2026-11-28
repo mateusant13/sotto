@@ -114,6 +114,68 @@ def _last(lines, needle):
     return ''
 
 
+_SHELL_ARTIFACT = 'sotto_webview.py'
+
+
+def _pid_of(line):
+    for part in line.split():
+        if part.startswith('pid='):
+            return part[4:]
+    return ''
+
+
+def _pid_alive(pid):
+    """True/False quando se sabe; None quando nao se pode saber.
+
+    Um pid VIVO nao basta: o Windows recicla numeros, logo a identidade prova-se
+    pelo ARTEFACTO na linha de comando -- a mesma regra que os filtros de kill
+    desta casa seguem. `None` (sem psutil, ou acesso recusado) e' "nao medido", e
+    nao medido nunca vira veredicto.
+    """
+    try:
+        import psutil
+    except Exception:                                  # noqa: BLE001
+        return None
+    try:
+        cmd = ' '.join(psutil.Process(int(pid)).cmdline() or [])
+        return _SHELL_ARTIFACT in cmd
+    except psutil.NoSuchProcess:
+        return False
+    except Exception:                                  # noqa: BLE001
+        return None
+
+
+def select_session(lines, alive=None):
+    """(inicio, fim, ignorados) -- a sessao MAIS NOVA cujo pid ainda vive.
+
+    A CLASSE (medida 2026-11-28): `judge` pegava em `_last(SHELL_STARTUP_STAGE)`
+    sem perguntar se aquele pid existia. Um instrumento desta casa larga uma shell
+    propria de vida curta (`sotto_webview.py --no-hotkey ... exit_after`) que
+    escreve a MESMA linha, morre, e passa a ser "o processo": medido, o `pid=16028`
+    morto as 17:17 foi julgado as 00:58 enquanto a app do dono (`pid=57132`, viva
+    desde 16:50) nunca era olhada -- e o `SHELL_CODE_ID` emparelhado vinha dos
+    heartbeats da sessao VIVA, misturando duas sessoes numa comparacao.
+
+    A sessao vai ate' ao FIM (ou ate' ao arranque VIVO seguinte): os heartbeats
+    `SHELL_CODE_ID` continuam a ser escritos pelo processo que ficou vivo, mesmo
+    que entre ele e o fim do log exista o arranque de um shell de medicao morto.
+    """
+    alive = alive or _pid_alive
+    starts, dead = [], []
+    for idx, line in enumerate(lines):
+        if 'SHELL_STARTUP_STAGE' in line or 'SHELL_START' in line:
+            pid = _pid_of(line)
+            if pid and alive(pid):
+                starts.append(idx)
+            else:
+                dead.append((idx, pid or '?'))
+    if not starts:
+        return None, None, [p for _i, p in dead]
+    start = starts[-1]
+    later = [p for i, p in dead if i > start]
+    return start, len(lines), later
+
+
 def _stamp_of(line):
     """`2026-10-30 04:29:24.092` -> epoch local (None se nao casar)."""
     if not line:
@@ -192,10 +254,17 @@ def _changed_since(names, dirpath, started):
     return changed, missing
 
 
-def judge(mod, text):
-    """-> (verdict, detail_dict). Puro: nao le o disco do log outra vez."""
+def judge(mod, text, start_line=None):
+    """-> (verdict, detail_dict). Puro: nao le o disco do log outra vez.
+
+    `start_line` e' a sessao JA' escolhida por quem SABE qual pid vive
+    (`select_session`); sem ela cai na ultima linha do texto, que e' o
+    comportamento antigo e o que o `--control` exercita.
+    """
     lines = text.splitlines()
-    start_line = _last(lines, 'SHELL_STARTUP_STAGE') or _last(lines, 'SHELL_START')
+    start_line = (start_line
+                  or _last(lines, 'SHELL_STARTUP_STAGE')
+                  or _last(lines, 'SHELL_START'))
     code_line = _last(lines, 'SHELL_CODE_ID')
     started = _stamp_of(start_line)
     started_stamp = start_line.split(' sotto:')[0].strip() if started else ''
@@ -454,6 +523,30 @@ def control(mod):
         if not ok:
             fails.append(name)
 
+    print('SELECT -- a sessao julgada e a MAIS NOVA cujo pid VIVE (2026-11-28)')
+    table = {10: True, 11: False, 12: None}
+
+    def _alive(pid):
+        return table.get(int(pid))
+
+    select_cases = [
+        ('S-so-o-vivo', ['10'], 0, []),
+        ('S-morto-mais-novo', ['10', '11'], 0, ['11']),
+        ('S-morte-solta', ['11'], None, ['11']),
+        ('S-nao-medido', ['12'], None, ['12']),
+        ('S-tres-um-vivo', ['11', '10', '11'], 1, ['11']),
+    ]
+    for name, pids, want_idx, want_dead in select_cases:
+        lines = ['%s sotto: SHELL_STARTUP_STAGE pid=%s stage=pre-lock'
+                 % (now, p) for p in pids]
+        idx, _end, dead = select_session(lines, alive=_alive)
+        ok = idx == want_idx and dead == want_dead
+        print('%s %-24s want=idx %r dead %r got=idx %r dead %r'
+              % ('GREEN' if ok else 'RED  ', name, want_idx, want_dead,
+                 idx, dead))
+        if not ok:
+            fails.append(name)
+
     id_fails, id_notes = _identity_arms(mod)
     for note in id_notes:
         print('       %s' % note)
@@ -603,8 +696,20 @@ def main(argv=None):
               % args.log)
         return 0
 
-    verdict, detail = judge(mod, _read_from_last(
-        args.log, 'SHELL_STARTUP_STAGE', say=lambda m: print('  ' + m)))
+    text = _read_from_last(args.log, 'SHELL_STARTUP_STAGE',
+                           say=lambda m: print('  ' + m))
+    lines = text.splitlines()
+    start, end, dead = select_session(lines)
+    if start is None:
+        print('LIVE_CODE CANNOT-MEASURE why=no-live-shell -- nenhuma linha de '
+              'arranque pertence a um processo vivo (%d arranque(s) no log: %s)'
+              % (len(dead), ', '.join(dead[-6:]) or '-'))
+        print('LIVE_CODE VERDICT: SKIPPED -- nao verificado: no-live-shell')
+        return 3 if args.strict else 0
+    if dead:
+        print('  sessao: pid=%s julgada; arranques MORTOS depois dela ignorados: %s'
+              % (_pid_of(lines[start]), ', '.join(dead[:6])))
+    verdict, detail = judge(mod, '\n'.join(lines[start:end]), lines[start])
     report(verdict, detail, args.log)
     _record(verdict, detail, args.log)
     # O PASSO DA BATERIA PRECISA DE UMA PALAVRA QUE DIGA "NAO VERIFIQUEI".

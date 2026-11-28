@@ -6003,6 +6003,17 @@ class ExternalCaptionWatcher(threading.Thread):
                     # mesma testemunha que a borda usa.
                     shell.yt_source_paused = bool(_now_paused)
                     shell.yt_source_ended = self.yt_cdp_ended
+                    # O LADO POSITIVO DO MESMO ESPELHO (2026-11-28). O portao
+                    # de ecran perguntava so' se a pausa foi PROVADA; o
+                    # desconhecido passava como permissao e a ultima cue de uma
+                    # aba PAUSADA subiu ao ecra (medido: `YT_FRAME rows=2` as
+                    # 12.637, `CAPTION_PAINT_SURFACE` as 12.690, a pausa provada
+                    # so' as 13.169). `yt_source_moving` e' a testemunha de que a
+                    # fonte ANDA: o relogio mexeu numa foto deste tick e nenhuma
+                    # pausa foi provada. Quem decide se pinta e'
+                    # `youtube_clock.paint_proven`, um dono so'.
+                    shell.yt_source_moving = bool(_mv_moving and _photo_fresh
+                                                 and not _now_paused)
                 if getattr(self, '_yt_was_paused', False) and not _now_paused:
                     _since = getattr(self, '_yt_pause_since', None)
                     log('YOUTUBE_PAUSE_RESUMED witness=clock-moved pause_s=%.1f '
@@ -21311,6 +21322,50 @@ class SottoShell:
             if final:
                 self._reload_policy.boundary(closed=True, why='external-line')
             return False
+        # PINTAR EXIGE TESTEMUNHA DE MOVIMENTO (2026-11-28). O portao acima
+        # pergunta se a pausa foi PROVADA e devolve False so' nesse caso; o
+        # estado inicial de uma aba adoptada e' DESCONHECIDO, e o desconhecido
+        # passava como permissao. Medido na tela do dono: a shell reabriu, a aba
+        # dele estava pausada, e a ultima cue subiu ao ecra 0,48 s antes do
+        # `CAPTION_WINDOW_BLANKED` -- sem audio nenhum. A linha continua a ir
+        # para o historico (acima); o que nao acontece e' um pixel novo sem prova
+        # de que a fonte anda. A regra vive em `youtube_clock.paint_proven`.
+        _paint_fp = None
+        if str(source or '').startswith('external:youtube'):
+            _vid_now = str(getattr(self, 'yt_video_id', '') or '')
+            if getattr(self, '_yt_paint_vid', None) != _vid_now:
+                # OUTRO VIDEO: nenhuma pintura anterior desta sessao conta como
+                # testemunha (uma aba trocada para um video pausado pintaria a
+                # primeira cue dele pelo mesmo defeito).
+                self._yt_paint_vid = _vid_now
+                self._yt_paint_fp = None
+            _rows_now = [r[:200] for r in (rows or [text])]
+            _fp = '\u2028'.join(_rows_now)
+            _prev = getattr(self, '_yt_paint_fp', None)
+            if not youtube_clock.paint_proven(
+                    bool(getattr(self, 'yt_source_moving', False)),
+                    True,
+                    bool(getattr(self, 'yt_source_paused', False)),
+                    bool(_prev is not None and _prev != _fp),
+                    _prev is not None):
+                if not getattr(self, '_yt_held_logged', False):
+                    self._yt_held_logged = True
+                    log('EXTERNAL_CAPTION_HELD reason=source-liveness-'
+                        'unwitnessed rows=%d moving=%s paused=%s '
+                        'had_previous=%s vid=%s'
+                        % (len(_rows_now),
+                           bool(getattr(self, 'yt_source_moving', False)),
+                           bool(getattr(self, 'yt_source_paused', False)),
+                           _prev is not None, _vid_now or '-'))
+                if final:
+                    self._reload_policy.boundary(closed=True, why='external-line')
+                return False
+            self._yt_held_logged = False
+            # A IMPRESSAO DIGITAL SO' CONTA QUANDO HA' PIXEL (2026-11-28): com o
+            # interruptor do dono desligado nada sobe ao ecra, e gravar a
+            # impressao aqui faria a primeira linha depois de ele LIGAR ser
+            # retida por "nao mudou" -- um ecra que so' acorda na cue seguinte.
+            _paint_fp = _fp
         if not _caption_on:
             if final:
                 self._reload_policy.boundary(closed=True, why='external-line')
@@ -21325,6 +21380,8 @@ class SottoShell:
             self._external_rows_logged = _key
             log('EXTERNAL_CAPTION_DRAWN rows=%d lines=%r'
                 % (len(_rows_for_log), [r[:70] for r in _rows_for_log]))
+        if _paint_fp is not None:
+            self._yt_paint_fp = _paint_fp
         self.push_caption_to_window(text, instant=instant, rows=rows, cue=cue)
         if final:
             self._reload_policy.boundary(closed=True, why='external-line')
@@ -21456,6 +21513,12 @@ class SottoShell:
         """
         self.yt_source_paused = False
         self.yt_source_ended = False
+        # A TESTEMUNHA DE MOVIMENTO MORRE COM A SUPERFICIE, como a pausa: uma
+        # fonte nova nao herda o "a andar" da anterior (2026-11-28).
+        self.yt_source_moving = False
+        self._yt_paint_fp = None
+        self._yt_paint_vid = None
+        self._yt_held_logged = False
 
     def on_external_captions_released(self):
         """The player stopped showing captions: give the microphone back.

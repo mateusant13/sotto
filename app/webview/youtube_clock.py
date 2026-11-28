@@ -214,3 +214,41 @@ def pause_proven(clock_static, clock_moving, photo_fresh):
     Devolve `bool`: a pausa vale (True) ou foi desmentida / nao medida (False).
     """
     return bool(photo_fresh) and bool(clock_static) and not bool(clock_moving)
+
+def paint_proven(clock_moving, photo_fresh, paused_proven, rows_changed,
+                 had_previous):
+    """O ECRAN SO' SOBE UMA LINHA NOVA COM TESTEMUNHA DE QUE A FONTE ANDA (2026-11-28).
+
+    O DEFEITO, medido na tela do dono. A shell reabriu, adoptou a aba do YouTube
+    que ele tinha DEIXADO PAUSADA (`AumWSG4Crf0`, `YOUTUBE_CDP_PACED paused=True`),
+    recebeu o primeiro quadro com 2 linhas e pintou-o 0,48 s antes de a pausa
+    ficar provada:
+
+        01:00:12.637 YT_FRAME src=external:youtube:track rows=2
+        01:00:12.690 CAPTION_PAINT_SURFACE src=player rows=2 text="That's the vibe..."
+        01:00:13.169 YOUTUBE_PAUSE_PROVEN witness=flag+clock-static held_s=0.6
+        01:00:13.170 CAPTION_WINDOW_BLANKED reason=youtube-paused
+
+    A causa nao e' a pausa -- essa ja' apagava. E' o portao de ecran perguntar
+    SO' "a pausa foi PROVADA?", e o DESCONHECIDO passar como permissao. O estado
+    inicial de qualquer adopcao de aba e' exactamente esse desconhecido.
+
+    A LEI, simetrica do `pause_proven`: **apagar exige prova de paragem; pintar
+    exige prova de movimento.** Nenhum dos dois aceita o desconhecido, e um quadro
+    que chega antes de qualquer medida nao sobe ao ecra -- vai para o historico e
+    espera o tique seguinte.
+
+    Duas testemunhas de movimento. A segunda existe para o player cujo relogio nao
+    se deixa ler (`_yt_no_clock_lines`, 2026-11-02 -- esse caminho continua a
+    servir o que o PROPRIO player desenha): o relogio a andar numa foto fresca, ou
+    as ROWS a mudar depois de ja' haver uma pintura nesta sessao. Um quadro
+    identico ao que ja' esta no ecra nao e' movimento -- e' a pausa a repetir-se,
+    que e' precisamente o que nao pode reacender o ecran.
+
+    Devolve `bool`: sobe (True) ou retem (False).
+    """
+    if paused_proven:
+        return False
+    if clock_moving and photo_fresh:
+        return True
+    return bool(had_previous) and bool(rows_changed)

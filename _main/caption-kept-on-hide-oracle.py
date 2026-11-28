@@ -242,9 +242,16 @@ def arm_display_gate(src):
       C) pausa/fim do player -> nada de pixels, mas o evento do historico sai.
     """
     fn_src = extract_method(src, 'external_caption')
+    # O PREDICADO DE PINTURA E' O MODULO REAL (2026-11-28): o portao novo
+    # consulta `youtube_clock.paint_proven`, e um stub aqui mediria o stub.
+    if str(REPO / 'app' / 'webview') not in sys.path:
+        sys.path.insert(0, str(REPO / 'app' / 'webview'))
+    import youtube_clock
+    logs = []
     ns = {
         'json': json, 'time': time,
-        'log': lambda *_a: None,
+        'youtube_clock': youtube_clock,
+        'log': lambda m: logs.append(str(m)),
         'clean_external_text': lambda t: str(t or '').strip(),
         'extends_previous': lambda _o, _n: False,
         '__builtins__': __builtins__,
@@ -265,8 +272,17 @@ def arm_display_gate(src):
     set_owner = owner_ns['set_external_owner']
 
     class DisplayShell:
-        def __init__(self, wanted=True, paused=False, ended=False):
+        def __init__(self, wanted=True, paused=False, ended=False,
+                     moving=True):
             self._caption_wanted = wanted
+            # A TESTEMUNHA DE MOVIMENTO (2026-11-28). Sem ela o portao RETEM --
+            # e' esse o defeito medido na tela do dono, entao o default do harne
+            # e' "a fonte anda" e cada braco escolhe o seu estado.
+            self.yt_source_moving = moving
+            self.yt_video_id = 'vid-1'
+            self._yt_paint_fp = None
+            self._yt_paint_vid = None
+            self._yt_held_logged = False
             self._caption_window_shown = False   # apagada pelo piso de silencio
             self.visible = False                 # painel escondido
             self.yt_source_paused = paused
@@ -309,10 +325,12 @@ def arm_display_gate(src):
             self.pushes.append(text)
 
     def run_case(wanted=True, paused=False, ended=False,
-                 source='external:youtube'):
-        shell = DisplayShell(wanted=wanted, paused=paused, ended=ended)
-        fn(shell, 'hello world', source, final=False,
-           instant=True, rows=['hello world'])
+                 source='external:youtube', moving=True,
+                 rows=('hello world',), shell=None):
+        shell = shell or DisplayShell(wanted=wanted, paused=paused,
+                                      ended=ended, moving=moving)
+        del logs[:]
+        fn(shell, rows[0], source, final=False, instant=True, rows=list(rows))
         return shell
 
     a = run_case()
@@ -336,7 +354,42 @@ def arm_display_gate(src):
           % ('PASS' if ok_d else 'FAIL', len(d.pushes), len(d.asyncs)))
     print('[%s] E pausa do YouTube nao cala o Stremio           pushes=%d hist=%d'
           % ('PASS' if ok_e else 'FAIL', len(e.pushes), len(e.asyncs)))
-    return ok_a and ok_b and ok_c and ok_d and ok_e
+    # F) A ABA PAUSADA QUE A SHELL ACABOU DE ADOPTAR NAO SOBE AO ECRA
+    #    (2026-11-28, medido na tela do dono: `YT_FRAME rows=2` as 12.637,
+    #    `CAPTION_PAINT_SURFACE` as 12.690, a pausa provada so' as 13.169 --
+    #    0,48 s de legenda de um video que ele nao estava a ver, sem audio).
+    #    O estado de uma aba adoptada e' DESCONHECIDO, e o desconhecido nao pinta.
+    f = run_case(moving=False)
+    ok_f = (not f.pushes and len(f.asyncs) == 1
+            and any('EXTERNAL_CAPTION_HELD reason=source-liveness-unwitnessed' in m
+                    for m in logs))
+    # G) A FONTE QUE ANDA PINTA -- a cura nao pode ser "nunca pintar".
+    ok_g = len(run_case(moving=True).pushes) == 1
+    # H) O PLAYER CUJO RELOGIO NAO SE DEIXA LER: as ROWS a mudar depois de uma
+    #    pintura desta sessao sao a segunda testemunha de movimento.
+    h = run_case(moving=True, rows=('first line',))
+    h.yt_source_moving = False
+    del logs[:]
+    fn(h, 'second line', 'external:youtube', final=False, instant=True,
+       rows=['second line'])
+    ok_h = len(h.pushes) == 2
+    # I) E A MESMA LINHA COM A FONTE PARADA NAO REACENDE O ECRAN -- uma pausa a
+    #    repetir a cue nao e' movimento.
+    del logs[:]
+    fn(h, 'second line', 'external:youtube', final=False, instant=True,
+       rows=['second line'])
+    ok_i = len(h.pushes) == 2
+    print('[%s] F aba adoptada sem testemunha nao pinta        pushes=%d held=%s'
+          % ('PASS' if ok_f else 'FAIL', len(f.pushes),
+             any('EXTERNAL_CAPTION_HELD' in m for m in logs)))
+    print('[%s] G a fonte que anda pinta                      pushes=%d'
+          % ('PASS' if ok_g else 'FAIL', 1))
+    print('[%s] H rows a mudar sem relogio pintam             pushes=%d'
+          % ('PASS' if ok_h else 'FAIL', len(h.pushes)))
+    print('[%s] I a mesma cue parada nao reacende o ecran     pushes=%d'
+          % ('PASS' if ok_i else 'FAIL', len(h.pushes)))
+    return (ok_a and ok_b and ok_c and ok_d and ok_e
+            and ok_f and ok_g and ok_h and ok_i)
 
 
 def arm_release_resets(src):
@@ -747,13 +800,28 @@ def main(argv):
         1)
     caught_release_blank = not arm_release_blanks_pixels(mutated11)
 
+    # 12) O PORTAO DE VIVACIDADE SAI (2026-11-28): pintar volta a nao exigir
+    # prova de que a fonte anda, e a aba PAUSADA que a shell adoptou pinta a
+    # ultima cue outra vez -- o defeito medido na tela do dono. O braco F TEM de
+    # cair.
+    live_gate = "            if not youtube_clock.paint_proven("
+    if src.count(live_gate) != 1:
+        print('NEG-ARM IMPOSSIVEL: o portao de vivacidade aparece %d vez(es)'
+              % src.count(live_gate))
+        return 2
+    mutated12 = src.replace(
+        live_gate,
+        "            if False and not youtube_clock.paint_proven(", 1)
+    caught_liveness = not arm_display_gate(mutated12)
+
     caught = (caught_hide and caught_pause and caught_deferred
               and caught_display and caught_pause_pixels and caught_release
               and caught_scope and caught_resume and caught_dwell
-              and caught_frames and caught_release_blank)
+              and caught_frames and caught_release_blank
+              and caught_liveness)
     print('NEG-ARM: %s -- hide=%s pausa=%s deferred=%s display=%s '
           'pausa-pixels=%s release=%s escopo=%s retoma=%s dwell=%s desenho=%s'
-          ' release-pixels=%s'
+          ' release-pixels=%s vivacidade=%s'
           % ('PASS' if caught else 'FAIL',
              'CAUGHT' if caught_hide else 'NOT-CAUGHT',
              'CAUGHT' if caught_pause else 'NOT-CAUGHT',
@@ -765,7 +833,8 @@ def main(argv):
              'CAUGHT' if caught_resume else 'NOT-CAUGHT',
              'CAUGHT' if caught_dwell else 'NOT-CAUGHT',
              'CAUGHT' if caught_frames else 'NOT-CAUGHT',
-             'CAUGHT' if caught_release_blank else 'NOT-CAUGHT'))
+             'CAUGHT' if caught_release_blank else 'NOT-CAUGHT',
+             'CAUGHT' if caught_liveness else 'NOT-CAUGHT'))
     return 1 if caught else 0
 
 

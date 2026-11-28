@@ -253,6 +253,15 @@ def _boot_shell(shell_mod, source=None, bridge=None):
         shell._yt_cdp_source = source
     if bridge is not None:
         shell.bridge = bridge
+    # A TESTEMUNHA DE VIVACIDADE QUE O TICK PUBLICA (2026-11-28). `external_caption`
+    # so' pinta quando ha' prova de que a fonte ANDA (`youtube_clock.paint_proven`),
+    # e essa prova nasce no tick da CDP a partir do relogio. Estas arms conduzem o
+    # observador directamente, logo publicam a mesma testemunha que o tick publicaria
+    # com um video a tocar (`sotto_webview.py`, espelho `yt_source_moving`). Nada aqui
+    # fica mais permissivo: o juizo de vivacidade tem arms proprios (F-I em
+    # `_main/caption-kept-on-hide-oracle.py`), e estas arms medem POSSE e DEDUPLICACAO.
+    if source is not None:
+        shell.yt_source_moving = True
     return shell, watcher, surface
 
 
